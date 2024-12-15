@@ -1,4 +1,3 @@
-
 local HookingService = {}
 -- Test
 HookingService.methodHooks = {
