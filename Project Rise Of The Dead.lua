@@ -1,5 +1,5 @@
-local HookingService = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/Roblox/refs/heads/dev/Hooks.lua"))()
-local GCScanner = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/Roblox/refs/heads/dev/GCScanner.lua"))()
+local HookingService = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Hooking.lua"))()
+local GCScanner = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/GCScanner.lua"))()
 
 local function HealSelf()
     if game.PlaceId == 464575687 then

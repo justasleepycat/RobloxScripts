@@ -1,8 +1,8 @@
 getgenv().SecureMode = true
 local ArrayField = loadstring(game:HttpGet('https://raw.githubusercontent.com/UI-Interface/ArrayField/main/Source.lua'))()
-local Sense = loadstring(game:HttpGet('https://sirius.menu/sense'))()
-local HookingService = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/Roblox/refs/heads/dev/Hooks.lua"))()
-local Checks = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/Roblox/refs/heads/dev/Checks.lua"))()
+local Sense = loadstring(game:HttpGet('https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Sense/SenseESP_ReWrittenSource.lua'))()
+local HookingService = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Hooking.lua"))()
+local Checks = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Checks.lua"))()
 
 
 local Window = ArrayField:CreateWindow({
