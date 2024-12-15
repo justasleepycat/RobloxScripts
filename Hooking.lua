@@ -51,6 +51,25 @@ function HookingService:NameCallSpoof(CallMethod, IgnoreSelfCaller, Function)
 	end))
 end
 
+function HookingService:SpoofAttribute(Object, Attribute, Value)
+    local namecall
+    namecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+        local caller = checkcaller()
+        local method = getnamecallmethod()
+
+        if method == "GetAttribute" then
+            local args = {...}
+            if self == Object or Object == nil then
+                if tostring(args[1] == Attribute) then
+                    return Value
+                end
+			end
+        end
+    
+        return namecall(self, ...)
+	end))
+end
+
 function HookingService:HookRemote(Remote, Function)
     local namecall
     namecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -88,6 +107,7 @@ function HookingService:ProtectGui(Object)
     end)
 end
 
+
 -- Example usage
 if false then
     HookingService:HookRemote(workspace.Services.PickupTool, function(namecall, self, ...)
@@ -112,6 +132,8 @@ if false then
     HookingService:DisableConnection(game.Players.LocalPlayer.Character.Humanoid.Died)
 
     HookingService:IndexSpoof(game.Workspace.CurrentCamera, "CFrame", CFrame.new(0,0,0))
+
+    HookingService:SpoofAttribute(nil, "CircleActionDuration", 0.01)
 end
 
 return HookingService
