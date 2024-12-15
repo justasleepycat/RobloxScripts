@@ -1,6 +1,6 @@
 getgenv().SecureMode = true
 local ArrayField = loadstring(game:HttpGet('https://raw.githubusercontent.com/UI-Interface/ArrayField/main/Source.lua'))()
-local VirtualKeyCodes = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/Roblox/refs/heads/dev/VirtualKeyCodes.lua"))()
+local VirtualKeyCodes = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/VirtualKeyCodes.lua"))()
 
 local Players = game:GetService("Players")
 local Workspace =  game:GetService("Workspace")
