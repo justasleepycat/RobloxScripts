@@ -112,7 +112,6 @@ function HookingService:ProtectGui(Object)
     end)
 end
 
-HookingService:SpoofAttribute(nil, "CircleActionDuration", 0.01)
 
 -- Example usage
 if false then
