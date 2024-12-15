@@ -32,7 +32,7 @@ end
 
 function HookingService:NameCallSpoof(CallMethod, IgnoreSelfCaller, Function)
     local namecall
-    namecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+    namecall = hookmetamethod(game, "__namecall", newcclosure(function(s...)
         local caller = checkcaller()
         local method = getnamecallmethod()
         if method ~= CallMethod then
