@@ -10,7 +10,7 @@ local RunService = game:GetService("RunService")
 getgenv().RemoteArgs = getgenv().RemoteArgs ~= nil and getgenv().RemoteArgs or {
     Debug = true,
     DefaultRemote = nil,
-	DamageVehicle = DamageVehicle,
+	DamageVehicle = {},
 }
 
 do  -- Block error analytics 
@@ -35,7 +35,7 @@ local function DamageVehicle(vehicle : Instance)
         local args = table.clone(getgenv().RemoteArgs.DamageVehicle)
         args[3] = vehicle
         args[4] = "Sniper"
-        for i = 1,30 do
+        for i = 1,1 do
             getgenv().RemoteArgs.DefaultRemote(unpack(args))
             task.wait(.06)
         end
@@ -79,7 +79,7 @@ end
 
 while #getgenv().RemoteArgs.DamageVehicle == 0 and task.wait() do end
 task.spawn(function()
-    while task.wait(4) do
+    while task.wait(.1) do
         for i,v in pairs(Workspace.Vehicles:GetChildren()) do
             pcall(function()
                 local dist = (v:GetPivot().Position - Workspace.CurrentCamera.CFrame.Position).Magnitude
