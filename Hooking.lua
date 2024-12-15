@@ -23,6 +23,7 @@ function HookingService:IndexSpoof(Object, Property, Value)
     local index
     index = hookmetamethod(Object ~= nil and Object or game, "__index", function(self, key, ...)
         if key == Property then
+			print(Value)
             return Value
         end
 
