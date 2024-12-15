@@ -21,7 +21,7 @@ end
 
 function HookingService:IndexSpoof(Object, Property, Value)
     local index
-    index = hookmetamethod(Object, "__index", function(self, key, ...)
+    index = hookmetamethod(Object ~= nil and Object or game, "__index", function(self, key, ...)
         if key == Property then
             return Value
         end
@@ -53,7 +53,7 @@ end
 
 function HookingService:SpoofAttribute(Object, Attribute, Value)
     local namecall
-    namecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    namecall = hookmetamethod(Object, "__namecall", newcclosure(function(self, ...)
         local caller = checkcaller()
         local method = getnamecallmethod()
         local args = {...}
