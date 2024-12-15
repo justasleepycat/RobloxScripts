@@ -1,11 +1,6 @@
 local HookingService = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Hooking.lua"))()
 
-
-HookingService:NameCallSpoof("GetAttribute", false, function(namecall, self, ...)
-	local args = {...}
-	print(args[1])
-    return namecall(self, ...)
-end)
+HookingService:SpoofAttribute(nil, "CircleActionDuration", 0.01)
 
 
 for i,v in pairs(game:GetService("Workspace"):GetDescendants()) do

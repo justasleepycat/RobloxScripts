@@ -56,17 +56,22 @@ function HookingService:SpoofAttribute(Object, Attribute, Value)
     namecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
         local caller = checkcaller()
         local method = getnamecallmethod()
-
-        if method == "GetAttribute" then
-            local args = {...}
-            if self == Object or Object == nil then
-                if tostring(args[1] == Attribute) then
-                    return Value
+        local args = {...}
+        local result = namecall(self, ...)
+        local success, err = pcall(function()
+            if method == "GetAttribute" then
+				if self == nil then return end
+                if typeof(result) ~= typeof(Value) then return end
+                if typeof(self) ~= "Instance" then return end
+                if self == Object or Object == nil then
+                    if tostring(args[1] == Attribute) then
+                        result = Value
+                    end
                 end
-			end
-        end
+            end
+		end)
     
-        return namecall(self, ...)
+        return result
 	end))
 end
 
@@ -107,6 +112,7 @@ function HookingService:ProtectGui(Object)
     end)
 end
 
+HookingService:SpoofAttribute(nil, "CircleActionDuration", 0.01)
 
 -- Example usage
 if false then
