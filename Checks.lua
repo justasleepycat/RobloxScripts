@@ -1,3 +1,4 @@
+-- local Checks = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Checks.lua"))()
 local Checks = {}
 
 local Players = game:GetService("Players")
@@ -15,11 +16,11 @@ function Checks:IsVisible(startPos : Vector3, endPos : Vector3, MaxDistance : nu
     return result
 end
 
-function Checks:GetClosestPlayerToMouse()
+function Checks:GetClosestPlayerToMouse(config)
     local CurrentCamera = Workspace.CurrentCamera
     local Mouse = Players.LocalPlayer:GetMouse()
 
-    local closestPlayer, maxDist = nil, math.huge
+    local closestPlayer, maxDist = nil, config.MaxDistance or math.huge
     for i,v in pairs(Players:GetChildren()) do
 		pcall(function()
 			if v == Players.LocalPlayer then
@@ -28,10 +29,12 @@ function Checks:GetClosestPlayerToMouse()
 			local Position = v.Character.Head:GetPivot().Position or v.Character:GetPivot().Position
             if Position then
 				local Pos2D, OnScreen = CurrentCamera:WorldToViewportPoint(Position)
-                local dist = (Vector2.new(Pos2D.X, Pos2D.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
-                if dist < maxDist then
-					maxDist = dist
-                    closestPlayer = v
+                if OnScreen then
+                    local dist = (Vector2.new(Pos2D.X, Pos2D.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+                    if dist < maxDist then
+                        maxDist = dist
+                        closestPlayer = v
+                    end
 				end
 			end
 		end)
@@ -41,7 +44,9 @@ end
 
 --[[ Available Functions
     IsVisible(startPos : Vector3, endPos : Vector3, MaxDistance : number,ignore : table) <-- uses raycasting and returns the raycastresult
-    GetClosestPlayerToMouse() <-- returns the player instance not the character
+    GetClosestPlayerToMouse({
+        MaxDistance = 100,
+    }) <-- returns the player instance not the character
 ]]
 if false then
     for i,v in pairs(game.Workspace.Threats:GetChildren()) do
