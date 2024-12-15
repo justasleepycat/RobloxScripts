@@ -1,3 +1,5 @@
+-- https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Hooking.lua
+-- local HookingService = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Hooking.lua"))()
 local HookingService = {}
 -- Test
 HookingService.methodHooks = {
@@ -30,7 +32,7 @@ end
 
 function HookingService:NameCallSpoof(CallMethod, IgnoreSelfCaller, Function)
     local namecall
-    namecall = hookmetamethod(game, "__namecall", function(self, ...)
+    namecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
         local caller = checkcaller()
         local method = getnamecallmethod()
         if method ~= CallMethod then
@@ -46,7 +48,7 @@ function HookingService:NameCallSpoof(CallMethod, IgnoreSelfCaller, Function)
         end
     
         return namecall(self, ...)
-    end)
+	end))
 end
 
 function HookingService:HookRemote(Remote, Function)

@@ -1,14 +1,12 @@
-game:GetService("RunService").Heartbeat:Connect(function(deltaTime : double)
-	local CurrentCamera = game:GetService("Workspace").CurrentCamera
-	local Character = game:GetService("Players").LocalPlayer.Character
-	if not Character then return end
-	local HumanoidRootPart =  Character:FindFirstChild("Head", true)
-	if not HumanoidRootPart then return end
-	local Humanoid = Character:FindFirstChildWhichIsA("Humanoid", true)
-	local oldVelocity = HumanoidRootPart.AssemblyLinearVelocity
+-- local HookingService = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Hooking.lua"))()
 
-	Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-	HumanoidRootPart.AssemblyLinearVelocity = CurrentCamera.CFrame.LookVector * 1e6
-	game:GetService("RunService").Stepped:Wait()
-	HumanoidRootPart.AssemblyLinearVelocity = oldVelocity
+
+HookingService:NameCallSpoof("FireServer", false, function(namecall, self, ...)
+    if string.find(tostring(self), "Primary") then
+        for i = 1,30 do
+            namecall(self, ...)
+            task.wait(.01)
+        end
+    end
+    return namecall(self, ...)
 end)
