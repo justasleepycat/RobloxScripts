@@ -592,7 +592,7 @@ function CloseNPrompt()
 	TweenService:Create(NotePrompt.Load,Infos,{TextTransparency = 1,BackgroundTransparency = 1}):Play()
 	TweenService:Create(NotePrompt.Load.UIStroke,Infos,{Transparency = 1}):Play()
 	TweenService:Create(NotePrompt.Load.Shadow,Infos,{ImageTransparency = 1}):Play()
-	wait(0.21)
+	wait(0.051)
 	NotePrompt.Visible = false
 end
 function qNotePrompt(PromptSettings)
@@ -742,7 +742,7 @@ function ArrayFieldLibrary:Notify(NotificationSettings)
 		TweenService:Create(Notification.Icon, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 0}):Play()
 		TweenService:Create(Notification.Title, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
 		TweenService:Create(Notification.Description, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 0.2}):Play()
-		wait(0.2)
+		wait(0.05)
 
 
 
@@ -802,7 +802,7 @@ function ArrayFieldLibrary:Notify(NotificationSettings)
 		TweenService:Create(Notification, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundTransparency = 1}):Play()
 		TweenService:Create(Notification.Title, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
 		TweenService:Create(Notification.Description, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
-		wait(0.2)
+		wait(0.05)
 		if not false then
 			neon:UnbindFrame(Notification.BlurModule)
 			blurlight:Destroy()
@@ -826,7 +826,7 @@ function CloseSideBar()
 	TweenService:Create(Main.SideTabList.RDMT, TweenInfo.new(0.05, Enum.EasingStyle.Quint),{TextTransparency = 1}):Play()
 	wait(.4)
 	Main.SideTabList.Visible = false
-	wait(0.2)
+	wait(0.05)
 	Debounce = false
 end
 function Hide()
@@ -968,7 +968,7 @@ function CloseSearch()
 	delay(.3,function()
 		SearchBar.Input.Visible = false
 	end)
-	wait(0.5)
+	wait(0.05)
 	SearchBar.Visible = false
 	Debounce = false
 end
@@ -983,7 +983,7 @@ function OpenSearch()
 	TweenService:Create(SearchBar.Clear, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = .8}):Play()
 	TweenService:Create(SearchBar.Filter, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = .8}):Play()
 	TweenService:Create(SearchBar.Input, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
-	wait(0.5)
+	wait(0.05)
 	Debounce = false
 end
 SearchBar.Input:GetPropertyChangedSignal('Text'):Connect(function()
@@ -1026,7 +1026,7 @@ function Maximise()
 	TweenService:Create(Main, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Size = UDim2.new(0, 500, 0, 475)}):Play()
 	TweenService:Create(Topbar, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Size = UDim2.new(0, 500, 0, 45)}):Play()
 	TabsList.Visible = true
-	wait(0.2)
+	wait(0.05)
 
 	Elements.Visible = true
 
@@ -1071,7 +1071,7 @@ function Maximise()
 	end
 
 
-	wait(0.1)
+	wait(0.05)
 
 	for _, tabbtn in ipairs(TopList:GetChildren()) do
 		if tabbtn.ClassName == "Frame" and tabbtn.Name ~= "Placeholder" then
@@ -1093,7 +1093,7 @@ function Maximise()
 	end
 
 
-	wait(0.5)
+	wait(0.05)
 	Debounce = false
 end
 function OpenSideBar()
@@ -1111,10 +1111,10 @@ function OpenSideBar()
 			end
 			TweenService:Create(tabbtn.Image, TweenInfo.new(0.055, Enum.EasingStyle.Quint),{ImageTransparency = 0}):Play()
 		end
-		wait(0.12)
+		wait(0.052)
 	end
 	SideBarClosed = false
-	wait(0.2)
+	wait(0.05)
 	Debounce = false
 end
 function Minimise()
@@ -1177,7 +1177,7 @@ function Minimise()
 	Elements.Visible = false
 	TabsList.Visible = false
 
-	wait(0.2)
+	wait(0.05)
 	Debounce = false
 end
 
@@ -1363,7 +1363,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 			wait(0.05)
 			TweenService:Create(KeyMain.NoteTitle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
 			TweenService:Create(KeyMain.NoteMessage, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
-			wait(0.15)
+			wait(0.055)
 			TweenService:Create(KeyMain.Hide, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 0.3}):Play()
 			TweenService:Create(KeyMain.HideP, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 0.3}):Play()
 			KeyUI.Main.Input.InputBox:GetPropertyChangedSignal('Text'):Connect(function()
@@ -1400,11 +1400,11 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(KeyMain.NoteMessage, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
 					TweenService:Create(KeyMain.Hide, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 1}):Play()
 					TweenService:Create(KeyMain.HideP, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 1}):Play()
-					delay(.4,function()
+					delay(.09,function()
 						KeyMain.Hide.Visible = false
 						KeyUI:Destroy()
 					end)
-					wait(0.51)
+					wait(0.05)
 					Passthrough = true
 					if Settings.KeySettings.SaveKey then
 						if writefile then
@@ -1428,7 +1428,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 						TweenService:Create(KeyMain.NoteMessage, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
 						TweenService:Create(KeyMain.Hide, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 1}):Play()
 						TweenService:Create(KeyMain.HideP, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 1}):Play()
-						wait(0.45)
+						wait(0.05)
 						game.Players.LocalPlayer:Kick("No Attempts Remaining")
 						game:Shutdown()
 					end
@@ -1436,9 +1436,9 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					AttemptsRemaining = AttemptsRemaining - 1
 					TweenService:Create(KeyMain, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Size = UDim2.new(0, 467, 0, 175)}):Play()
 					TweenService:Create(KeyMain, TweenInfo.new(0.05, Enum.EasingStyle.Elastic), {Position = UDim2.new(0.495,0,0.5,0)}):Play()
-					wait(0.1)
+					wait(0.05)
 					TweenService:Create(KeyMain, TweenInfo.new(0.05, Enum.EasingStyle.Elastic), {Position = UDim2.new(0.505,0,0.5,0)}):Play()
-					wait(0.1)
+					wait(0.05)
 					TweenService:Create(KeyMain, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Position = UDim2.new(0.5,0,0.5,0)}):Play()
 					TweenService:Create(KeyMain, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Size = UDim2.new(0, 500, 0, 187)}):Play()
 				end
@@ -1471,7 +1471,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 				TweenService:Create(KeyMain.NoteMessage, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
 				TweenService:Create(KeyMain.Hide, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 1}):Play()
 				TweenService:Create(KeyMain.HideP, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 1}):Play()
-				wait(0.51)
+				wait(0.05)
 				ArrayFieldLibrary:Destroy()
 				KeyUI:Destroy()
 			end)
@@ -1520,10 +1520,10 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 	SideList.SideTemplate.Visible = false
 	Notifications.Template.Visible = false
 	Notifications.Visible = true
-	wait(0.5)
+	wait(0.05)
 	TweenService:Create(Main, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundTransparency = 0}):Play()
 	TweenService:Create(Main.Shadow.Image, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 0.55}):Play()
-	wait(0.1)
+	wait(0.05)
 	TweenService:Create(LoadingFrame.Title, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
 	wait(0.05)
 	TweenService:Create(LoadingFrame.Subtitle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
@@ -1606,7 +1606,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 		end
 		TopTabButton.UIStroke.Color = SelectedTheme.TabStroke
 		--Animate
-		wait(0.1)
+		wait(0.05)
 		if FirstTab then
 			TopTabButton.BackgroundColor3 = SelectedTheme.TabBackground
 			TopTabButton.Image.ImageColor3 = SelectedTheme.TabTextColor
@@ -1716,7 +1716,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
                         TweenService:Create(Button.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
                         Button.Title.Text = "Callback Error"
                         print("ArrayField | "..ButtonSettings.Name.." Callback Error " ..tostring(Response))
-                        wait(0.5)
+                        wait(0.05)
                         Button.Title.Text = ButtonSettings.Name
                         TweenService:Create(Button, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
                         TweenService:Create(Button.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
@@ -1726,7 +1726,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
                         TweenService:Create(Button, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackgroundHover}):Play()
                         TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
                         TweenService:Create(Button.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
-                        wait(0.2)
+                        wait(0.05)
                         TweenService:Create(Button, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
                         TweenService:Create(Button.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
                         TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 0.9}):Play()
@@ -1758,14 +1758,14 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 				Button.Lock.Reason.Text = Reason or 'Locked'
 				TweenService:Create(Button.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 0}):Play()
 				TweenService:Create(Button.Lock.Reason,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency = 0}):Play()
-				wait(0.2)
+				wait(0.05)
 				if not ButtonValue.Locked then return end --no icon bug
 				TweenService:Create(Button.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 0}):Play()
 			end
 			function ButtonValue:Unlock()
 				if not ButtonValue.Locked then return end
 				ButtonValue.Locked = false
-				wait(0.2)
+				wait(0.05)
 				TweenService:Create(Button.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 1}):Play()
 				if ButtonValue.Locked then return end --no icon bug
 				TweenService:Create(Button.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 1}):Play()
@@ -1878,7 +1878,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					end
 					TweenService:Create(Section.Title.ImageButton,TweenInfo.new(0.05,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Rotation = 0}):Play()
 					SectionValue.Open = true
-					wait(.3)
+					wait(.05)
 					Debounce = false
 				end
 			end)
@@ -2040,7 +2040,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Input.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 					Input.Title.Text = "Callback Error"
 					print("ArrayField | "..InputSettings.Name.." Callback Error " ..tostring(Response))
-					wait(0.5)
+					wait(0.05)
 					Input.Title.Text = InputSettings.Name
 					TweenService:Create(Input, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 					TweenService:Create(Input.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
@@ -2077,14 +2077,14 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 				Input.Lock.Reason.Text = Reason or 'Locked'
 				TweenService:Create(Input.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 0}):Play()
 				TweenService:Create(Input.Lock.Reason,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency = 0}):Play()
-				wait(0.2)
+				wait(0.05)
 				if not InputSettings.Locked then return end --no icon bug
 				TweenService:Create(Input.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 0}):Play()
 			end
 			function InputSettings:Unlock()
 				if not InputSettings.Locked then return end
 				InputSettings.Locked = false
-				wait(0.2)
+				wait(0.05)
 				TweenService:Create(Input.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 1}):Play()
 				if InputSettings.Locked then return end --no icon bug
 				TweenService:Create(Input.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 1}):Play()
@@ -2164,7 +2164,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 				if DropdownSettings.Locked then return end
 				TweenService:Create(Dropdown, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackgroundHover}):Play()
 				TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
-				wait(0.1)
+				wait(0.05)
 				TweenService:Create(Dropdown, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 				TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
 				if Debounce then return end
@@ -2180,7 +2180,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					end
 					TweenService:Create(Dropdown.List, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ScrollBarImageTransparency = 1}):Play()
 					TweenService:Create(Dropdown.Toggle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Rotation = 180}):Play()	
-					wait(0.35)
+					wait(0.05)
 					Dropdown.List.Visible = false
 					Debounce = false
 				else
@@ -2229,7 +2229,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 				TweenService:Create(Dropdown, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 				TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 				Dropdown.Title.Text = text
-				wait(0.5)
+				wait(0.05)
 				Dropdown.Title.Text = DropdownSettings.Name
 				TweenService:Create(Dropdown, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 				TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
@@ -2324,9 +2324,9 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(DropdownOption.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 					TweenService:Create(DropdownOption, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
 					Debounce = true
-					wait(0.2)
+					wait(0.05)
 					TweenService:Create(DropdownOption.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
-					wait(0.1)
+					wait(0.05)
 					if not Multi then
 						TweenService:Create(Dropdown, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Size = UDim2.new(0,465, 0, 45)}):Play()
 						for _, DropdownOpt in ipairs(Dropdown.List:GetChildren()) do
@@ -2338,7 +2338,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 						end
 						TweenService:Create(Dropdown.List, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ScrollBarImageTransparency = 1}):Play()
 						TweenService:Create(Dropdown.Toggle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Rotation = 180}):Play()	
-						wait(0.35)
+						wait(0.05)
 						Dropdown.List.Visible = false
 
 					end
@@ -2385,7 +2385,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 						TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 						Dropdown.Title.Text = "Callback Error"
 						print("ArrayField | "..DropdownSettings.Name.." Callback Error " ..tostring(Response))
-						wait(0.5)
+						wait(0.05)
 						Dropdown.Title.Text = DropdownSettings.Name
 						TweenService:Create(Dropdown, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 						TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
@@ -2455,20 +2455,20 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 				end
 				TweenService:Create(Dropdown.List, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ScrollBarImageTransparency = 1}):Play()
 				TweenService:Create(Dropdown.Toggle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Rotation = 180}):Play()	
-				wait(0.35)
+				wait(0.05)
 				Dropdown.List.Visible = false
 				Debounce = false
 				Dropdown.Lock.Reason.Text = Reason or 'Locked'
 				TweenService:Create(Dropdown.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 0}):Play()
 				TweenService:Create(Dropdown.Lock.Reason,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency = 0}):Play()
-				wait(0.2)
+				wait(0.05)
 				if not DropdownSettings.Locked then return end --no icon bug
 				TweenService:Create(Dropdown.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 0}):Play()
 			end
 			function DropdownSettings:Unlock()
 				if not DropdownSettings.Locked then return end
 				DropdownSettings.Locked = false
-				wait(0.2)
+				wait(0.05)
 				TweenService:Create(Dropdown.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 1}):Play()
 				if DropdownSettings.Locked then return end --no icon bug
 				TweenService:Create(Dropdown.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 1}):Play()
@@ -2564,13 +2564,13 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 							TweenService:Create(Keybind.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 							Keybind.Title.Text = "Callback Error"
 							print("ArrayField | "..KeybindSettings.Name.." Callback Error " ..tostring(Response))
-							wait(0.5)
+							wait(0.05)
 							Keybind.Title.Text = KeybindSettings.Name
 							TweenService:Create(Keybind, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 							TweenService:Create(Keybind.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
 						end
 					else
-						wait(0.25)
+						wait(0.055)
 						if Held then
 							local Loop; Loop = RunService.Stepped:Connect(function()
 								if not Held then
@@ -2604,14 +2604,14 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 				Keybind.Lock.Reason.Text = Reason or 'Locked'
 				TweenService:Create(Keybind.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 0}):Play()
 				TweenService:Create(Keybind.Lock.Reason,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency = 0}):Play()
-				wait(0.2)
+				wait(0.05)
 				if not KeybindSettings.Locked then return end --no icon bug
 				TweenService:Create(Keybind.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 0}):Play()
 			end
 			function KeybindSettings:Unlock()
 				if not KeybindSettings.Locked then return end
 				KeybindSettings.Locked = false
-				wait(0.2)
+				wait(0.05)
 				TweenService:Create(Keybind.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 1}):Play()
 				if KeybindSettings.Locked then return end --no icon bug
 				TweenService:Create(Keybind.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 1}):Play()
@@ -2692,7 +2692,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Toggle.Switch.UIStroke, TweenInfo.new(0.055, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Color = SelectedTheme.ToggleDisabledOuterStroke}):Play()
 					wait(0.05)
 					TweenService:Create(Toggle.Switch.Indicator, TweenInfo.new(0.05, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0,17,0,17)}):Play()
-					wait(0.15)
+					wait(0.055)
 					TweenService:Create(Toggle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()	
 				else
@@ -2706,7 +2706,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Toggle.Switch.UIStroke, TweenInfo.new(0.055, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Color = SelectedTheme.ToggleEnabledOuterStroke}):Play()
 					wait(0.05)
 					TweenService:Create(Toggle.Switch.Indicator, TweenInfo.new(0.055, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0,17,0,17)}):Play()	
-					wait(0.15)
+					wait(0.055)
 					TweenService:Create(Toggle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()		
 				end
@@ -2719,7 +2719,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 					Toggle.Title.Text = "Callback Error"
 					print("ArrayField | "..ToggleSettings.Name.." Callback Error " ..tostring(Response))
-					wait(0.5)
+					wait(0.05)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
@@ -2739,7 +2739,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Toggle.Switch.UIStroke, TweenInfo.new(0.055, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Color = Color3.fromRGB(100,100,100)}):Play()
 					wait(0.05)
 					TweenService:Create(Toggle.Switch.Indicator, TweenInfo.new(0.055, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0,17,0,17)}):Play()	
-					wait(0.15)
+					wait(0.055)
 					TweenService:Create(Toggle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()	
 				else
@@ -2753,7 +2753,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Toggle.Switch.UIStroke, TweenInfo.new(0.055, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Color = Color3.fromRGB(65,65,65)}):Play()
 					wait(0.05)
 					TweenService:Create(Toggle.Switch.Indicator, TweenInfo.new(0.05, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0,17,0,17)}):Play()
-					wait(0.15)
+					wait(0.055)
 					TweenService:Create(Toggle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()	
 				end
@@ -2765,7 +2765,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 					Toggle.Title.Text = "Callback Error"
 					print("ArrayField | "..ToggleSettings.Name.." Callback Error " ..tostring(Response))
-					wait(0.5)
+					wait(0.05)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
@@ -2781,14 +2781,14 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 				Toggle.Lock.Reason.Text = Reason or 'Locked'
 				TweenService:Create(Toggle.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 0}):Play()
 				TweenService:Create(Toggle.Lock.Reason,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency = 0}):Play()
-				wait(0.2)
+				wait(0.05)
 				if not ToggleSettings.Locked then return end --no icon bug
 				TweenService:Create(Toggle.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 0}):Play()
 			end
 			function ToggleSettings:Unlock()
 				if not ToggleSettings.Locked then return end
 				ToggleSettings.Locked = false
-				wait(0.2)
+				wait(0.05)
 				TweenService:Create(Toggle.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 1}):Play()
 				if ToggleSettings.Locked then return end --no icon bug
 				TweenService:Create(Toggle.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 1}):Play()
@@ -3071,14 +3071,14 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 				ColorPickerSettings.Locked = true
 				TweenService:Create(ColorPicker.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 0}):Play()
 				TweenService:Create(ColorPicker.Lock.Reason,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency = 0}):Play()
-				wait(0.2)
+				wait(0.05)
 				if not ColorPickerSettings.Locked then return end --no icon bug
 				TweenService:Create(ColorPicker.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 0}):Play()
 			end
 			function ColorPickerSettings:Unlock()
 				if not ColorPickerSettings.Locked then return end
 				ColorPickerSettings.Locked = false
-				wait(0.2)
+				wait(0.05)
 				TweenService:Create(ColorPicker.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 1}):Play()
 				if ColorPickerSettings.Locked then return end --no icon bug
 				TweenService:Create(ColorPicker.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 1}):Play()
@@ -3186,7 +3186,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 						TweenService:Create(Slider.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 						Slider.Title.Text = "Callback Error"
 						print("ArrayField | "..SliderSettings.Name.." Callback Error " ..tostring(Response))
-						wait(0.5)
+						wait(0.05)
 						Slider.Title.Text = SliderSettings.Name
 						TweenService:Create(Slider, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 						TweenService:Create(Slider.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
@@ -3223,7 +3223,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Slider.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 					Slider.Title.Text = "Callback Error"
 					print("ArrayField | "..SliderSettings.Name.." Callback Error " ..tostring(Response))
-					wait(0.5)
+					wait(0.05)
 					Slider.Title.Text = SliderSettings.Name
 					TweenService:Create(Slider, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
 					TweenService:Create(Slider.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
@@ -3240,14 +3240,14 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 				Slider.Lock.Reason.Text = Reason or 'Locked'
 				TweenService:Create(Slider.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 0}):Play()
 				TweenService:Create(Slider.Lock.Reason,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency = 0}):Play()
-				wait(0.2)
+				wait(0.05)
 				if not SliderSettings.Locked then return end --no icon bug
 				TweenService:Create(Slider.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 0}):Play()
 			end
 			function SliderSettings:Unlock()
 				if not SliderSettings.Locked then return end
 				SliderSettings.Locked = false
-				wait(0.2)
+				wait(0.05)
 				TweenService:Create(Slider.Lock.Reason.Icon,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{ImageTransparency = 1}):Play()
 				if SliderSettings.Locked then return end --no icon bug
 				TweenService:Create(Slider.Lock,TweenInfo.new(0.05,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{BackgroundTransparency = 1}):Play()
@@ -3274,7 +3274,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 	TweenService:Create(LoadingFrame.Title, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
 	TweenService:Create(LoadingFrame.Subtitle, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
 	TweenService:Create(LoadingFrame.Version, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
-	wait(0.2)
+	wait(0.05)
 	TweenService:Create(Main, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Size = UDim2.new(0, 500, 0, 475)}):Play()
 	TweenService:Create(Main.Shadow.Image, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 0.4}):Play()
 
@@ -3290,17 +3290,17 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 	Topbar.Visible = true
 	TweenService:Create(Topbar, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundTransparency = 0}):Play()
 	TweenService:Create(Topbar.CornerRepair, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundTransparency = 0}):Play()
-	wait(0.1)
+	wait(0.05)
 	TweenService:Create(Topbar.Divider, TweenInfo.new(1, Enum.EasingStyle.Quint), {Size = UDim2.new(1, 0, 0, 1)}):Play()
-	wait(0.1)
+	wait(0.05)
 	TweenService:Create(Topbar.Title, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
-	wait(0.1)
+	wait(0.05)
 	TweenService:Create(Topbar.Theme, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 0.8}):Play()
-	wait(0.1)
+	wait(0.05)
 	TweenService:Create(Topbar.ChangeSize, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 0.8}):Play()
-	wait(0.1)
+	wait(0.05)
 	TweenService:Create(Topbar.Hide, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {ImageTransparency = 0.8}):Play()
-	wait(0.3)
+	wait(0.05)
 	function Window:Prompt(PromptSettings)
 		local PromptUI = Prompt.Prompt
 		Prompt.Visible = true
@@ -3348,7 +3348,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 		TweenService:Create(Prompt, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundTransparency = .5}):Play()
 		wait(.2)
 		TweenService:Create(PromptUI, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {BackgroundTransparency = 0,Size = UDim2.new(0,350,0,150)}):Play()
-		wait(0.2)
+		wait(0.05)
 		TweenService:Create(PromptUI.UIStroke, TweenInfo.new(0.05, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
 		TweenService:Create(PromptUI.Title, TweenInfo.new(0.055, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
 		TweenService:Create(PromptUI.Content, TweenInfo.new(0.055, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
