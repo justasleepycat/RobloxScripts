@@ -257,55 +257,55 @@ end
 
 local function FadeDescription(Infos,type,Out:boolean?)
     pcall(function()
-	local Size = UDim2.fromOffset(230,275)
-	local Transparency = 0
-	local WaitTime = .05
-	if Out then
-		Size = UDim2.fromOffset(212,254)
-		Transparency = 1
-		WaitTime = nil
-	end
-	if not Out then
-		-- Set the Status
-		if type == 'slider' then
-			InfoPrompt.Status.Text = Infos.CurrentValue
-		elseif type == 'button' then
-			InfoPrompt.Status.Text = 'Clickable'
-		elseif type == 'toggle' then
-			InfoPrompt.Status.Text,InfoPrompt.Status.TextColor3 = BoolToText(Infos.CurrentValue)
-		elseif type == 'dropdown' then
-			--=| Do this |=--
-		elseif type == 'colorpicker' then
-			InfoPrompt.Status.Text = Infos.Color.R..Infos.Color.G..Infos.Color.B
-		end
+        local Size = UDim2.fromOffset(230,275)
+        local Transparency = 0
+        local WaitTime = .05
+        if Out then
+            Size = UDim2.fromOffset(212,254)
+            Transparency = 1
+            WaitTime = nil
+        end
+        if not Out then
+            -- Set the Status
+            if type == 'slider' then
+                InfoPrompt.Status.Text = Infos.CurrentValue
+            elseif type == 'button' then
+                InfoPrompt.Status.Text = 'Clickable'
+            elseif type == 'toggle' then
+                InfoPrompt.Status.Text,InfoPrompt.Status.TextColor3 = BoolToText(Infos.CurrentValue)
+            elseif type == 'dropdown' then
+                --=| Do this |=--
+            elseif type == 'colorpicker' then
+                InfoPrompt.Status.Text = Infos.Color.R..Infos.Color.G..Infos.Color.B
+            end
 
-		if not Infos.Info.Image then
-			InfoPrompt.ImageLabel.Visible = false
-			InfoPrompt.Description.Position = InfoPrompt.ImageLabel.Position
-		else
-			InfoPrompt.ImageLabel.Visible = true
-			InfoPrompt.ImageLabel.Image = 'rbxassetid://'..Infos.Info.Image
-			InfoPrompt.Description.Position = UDim2.new(.5,0,0,160)
-		end
+            if not Infos.Info.Image then
+                InfoPrompt.ImageLabel.Visible = false
+                InfoPrompt.Description.Position = InfoPrompt.ImageLabel.Position
+            else
+                InfoPrompt.ImageLabel.Visible = true
+                InfoPrompt.ImageLabel.Image = 'rbxassetid://'..Infos.Info.Image
+                InfoPrompt.Description.Position = UDim2.new(.5,0,0,160)
+            end
 
-		InfoPrompt.Title.Text = Infos.Info.Title
-		InfoPrompt.Description.Text = Infos.Info.Description
-	end
-	TweenService:Create(InfoPrompt,TweenInfo.new(.3,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{
-		Size = Size,BackgroundTransparency = Transparency
-	}):Play()
-	TweenService:Create(InfoPrompt.ImageLabel,TweenInfo.new(.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
-		ImageTransparency = Transparency
-	}):Play()
-	TweenService:Create(InfoPrompt.Description,TweenInfo.new(.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
-		TextTransparency = Transparency
-	}):Play()
-	TweenService:Create(InfoPrompt.Status,TweenInfo.new(.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
-		TextTransparency = Transparency
-	}):Play()
-	TweenService:Create(InfoPrompt.Title,TweenInfo.new(.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
-		TextTransparency = Transparency
-	}):Play()
+            InfoPrompt.Title.Text = Infos.Info.Title
+            InfoPrompt.Description.Text = Infos.Info.Description
+        end
+        TweenService:Create(InfoPrompt,TweenInfo.new(.3,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{
+            Size = Size,BackgroundTransparency = Transparency
+        }):Play()
+        TweenService:Create(InfoPrompt.ImageLabel,TweenInfo.new(.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
+            ImageTransparency = Transparency
+        }):Play()
+        TweenService:Create(InfoPrompt.Description,TweenInfo.new(.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
+            TextTransparency = Transparency
+        }):Play()
+        TweenService:Create(InfoPrompt.Status,TweenInfo.new(.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
+            TextTransparency = Transparency
+        }):Play()
+        TweenService:Create(InfoPrompt.Title,TweenInfo.new(.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
+            TextTransparency = Transparency
+        }):Play()
 	end)
 end
 
