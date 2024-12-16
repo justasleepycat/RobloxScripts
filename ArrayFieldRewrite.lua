@@ -256,6 +256,7 @@ function BoolToText(Bool)
 end
 
 local function FadeDescription(Infos,type,Out:boolean?)
+    pcall(function()
 	local Size = UDim2.fromOffset(230,275)
 	local Transparency = 0
 	local WaitTime = .05
@@ -305,6 +306,7 @@ local function FadeDescription(Infos,type,Out:boolean?)
 	TweenService:Create(InfoPrompt.Title,TweenInfo.new(.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
 		TextTransparency = Transparency
 	}):Play()
+	end)
 end
 
 function AddInfos(Object:Frame,Settings,type)
