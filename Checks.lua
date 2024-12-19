@@ -42,11 +42,37 @@ function Checks:GetClosestPlayerToMouse(config)
     return closestPlayer
 end
 
+function Checks:GetClosestPlayerToPosition(config)
+    local closestPlayer, maxDist = nil, config.MaxDistance or math.huge
+    for i,v in pairs(Players:GetChildren()) do
+		pcall(function()
+			if v == Players.LocalPlayer then
+				return
+			end
+			local Position = v.Character.Head:GetPivot().Position or v.Character:GetPivot().Position
+            if Position then
+				local Pos2D, OnScreen = CurrentCamera:WorldToViewportPoint(Position)
+                if OnScreen then
+                    local dist = (config.Origin - Position).Magnitude
+                    if dist < maxDist then
+                        maxDist = dist
+                        closestPlayer = v
+                    end
+				end
+			end
+		end)
+	end
+    return closestPlayer
+end
+
 --[[ Available Functions
     IsVisible(startPos : Vector3, endPos : Vector3, MaxDistance : number,ignore : table) <-- uses raycasting and returns the raycastresult
     GetClosestPlayerToMouse({
         MaxDistance = 100,
     }) <-- returns the player instance not the character
+    GetClosestPlayerToPosition({
+        Origin = Vector3.new(0,0,0),
+    }) <-- returns the player instance
 ]]
 if false then
     for i,v in pairs(game.Workspace.Threats:GetChildren()) do
@@ -55,7 +81,9 @@ if false then
             print(v:GetFullName())
         end
     end
-
+    print(Checks:GetClosestPlayerToPosition({
+        Origin = Workspace.CurrentCamera.CFrame.Position
+    }))
     print(Checks:GetClosestPlayerToMouse()) 
 end
 
