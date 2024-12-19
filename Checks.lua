@@ -14,7 +14,7 @@ function Checks:IsVisible(startPos : Vector3, endPos : Vector3, MaxDistance : nu
     RayParams.RespectCanCollide = true
     local result : RaycastResult = game:GetService("Workspace"):Raycast(startPos, (endPos - startPos).Unit * MaxDistance, RayParams)
     return result
-end
+end 
 
 function Checks:GetClosestPlayerToMouse(config)
     local CurrentCamera = Workspace.CurrentCamera
