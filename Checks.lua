@@ -17,6 +17,9 @@ function Checks:IsVisible(startPos : Vector3, endPos : Vector3, MaxDistance : nu
 end 
 
 function Checks:GetClosestPlayerToMouse(config)
+    config = config or {}
+    config.MaxDistance = config.MaxDistance or math.huge
+
     local CurrentCamera = Workspace.CurrentCamera
     local Mouse = Players.LocalPlayer:GetMouse()
 
@@ -43,6 +46,8 @@ function Checks:GetClosestPlayerToMouse(config)
 end
 
 function Checks:GetClosestPlayerToPosition(config)
+    config = config or {}
+    config.MaxDistance = config.MaxDistance or math.huge
     local closestPlayer, maxDist = nil, config.MaxDistance or math.huge
     for i,v in pairs(Players:GetChildren()) do
 		pcall(function()
@@ -51,14 +56,11 @@ function Checks:GetClosestPlayerToPosition(config)
 			end
 			local Position = v.Character.Head:GetPivot().Position or v.Character:GetPivot().Position
             if Position then
-				local Pos2D, OnScreen = CurrentCamera:WorldToViewportPoint(Position)
-                if OnScreen then
-                    local dist = (config.Origin - Position).Magnitude
-                    if dist < maxDist then
-                        maxDist = dist
-                        closestPlayer = v
-                    end
-				end
+                local dist = (config.Origin - Position).Magnitude
+                if dist < maxDist then
+                    maxDist = dist
+                    closestPlayer = v
+                end
 			end
 		end)
 	end
@@ -71,17 +73,21 @@ end
         MaxDistance = 100,
     }) <-- returns the player instance not the character
     GetClosestPlayerToPosition({
+        MaxDistance = 500,
         Origin = Vector3.new(0,0,0),
     }) <-- returns the player instance
 ]]
-if false then
-    for i,v in pairs(game.Workspace.Threats:GetChildren()) do
-        local visible = Checks:IsVisible(game.Players.LocalPlayer.Character.Head.CFrame.Position, v:GetPivot().Position, 1000, {game.Players.LocalPlayer.Character})
-        if visible.Instance and visible.Instance:IsDescendantOf(v) then
-            print(v:GetFullName())
-        end
+if true then
+    for i,v in pairs(game:GetService("Players"):GetChildren()) do
+        pcall(function()
+            local visible = Checks:IsVisible(game.Players.LocalPlayer.Character.Head.CFrame.Position, v.Character:GetPivot().Position, 1000, {game.Players.LocalPlayer.Character})
+            if visible.Instance and visible.Instance:IsDescendantOf(v) then
+                print(v:GetFullName())
+            end
+		end)
     end
     print(Checks:GetClosestPlayerToPosition({
+        MaxDistance = 500,
         Origin = Workspace.CurrentCamera.CFrame.Position
     }))
     print(Checks:GetClosestPlayerToMouse()) 
