@@ -77,7 +77,7 @@ end
         Origin = Vector3.new(0,0,0),
     }) <-- returns the player instance
 ]]
-if true then
+if false then
     for i,v in pairs(game:GetService("Players"):GetChildren()) do
         pcall(function()
             local visible = Checks:IsVisible(game.Players.LocalPlayer.Character.Head.CFrame.Position, v.Character:GetPivot().Position, 1000, {game.Players.LocalPlayer.Character})
