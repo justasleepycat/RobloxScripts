@@ -67,6 +67,16 @@ function Checks:GetClosestPlayerToPosition(config)
     return closestPlayer
 end
 
+function Checks:IsOnScreen(X, Y)
+    local Workspace = game:GetService("Workspace")
+    local CurrentCamera = Workspace.CurrentCamera
+    if CurrentCamera then
+    	local XOnScreen = X > 0 and X < CurrentCamera.ViewportSize.X
+        local YOnScreen = Y > 0 and Y < CurrentCamera.ViewportSize.Y
+        return XOnScreen, YOnScreen
+    end
+end
+
 --[[ Available Functions
     IsVisible(startPos : Vector3, endPos : Vector3, MaxDistance : number,ignore : table) <-- uses raycasting and returns the raycastresult
     GetClosestPlayerToMouse({
