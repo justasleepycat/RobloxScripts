@@ -1,7 +1,7 @@
 local SleepyDumper = {}
 
 makefolder("DumpedScripts")
-local scriptPath = ("DumpedScripts/%s"):format(game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name)
+local scriptPath = ("DumpedScripts/%s"):format(string.gsub(game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name, "|", ""))
 makefolder(scriptPath)
 
 function SleepyDumper:DumpFunctions(config)
