@@ -1,8 +1,12 @@
 local SleepyDumper = {}
 
 makefolder("DumpedScripts")
-local scriptPath = ("DumpedScripts/%s"):format(string.gsub(game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name, "|", ""))
-makefolder(scriptPath)
+local scriptPath = ("DumpedScripts/%s"):format("Test") -- game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+
+function SleepyDumper:ChangeName(newName)
+    scriptPath = ("DumpedScripts/%s"):format(tostring(newName))
+    makefolder(scriptPath)
+end
 
 function SleepyDumper:DumpFunctions(config)
     local DumpedFunctions = {}
@@ -47,6 +51,7 @@ function SleepyDumper:DumpInstance(instance : Instance)
 		end
 
         local CurrentPath = scriptPath.."/"..tostring(instance)
+        local LastPath = CurrentPath
         local loops,maxloops = 0,3
 
         local function DumpChildren(parent : Instance, path)
@@ -56,21 +61,29 @@ function SleepyDumper:DumpInstance(instance : Instance)
 			makefolder(path)
 
             for i,v in pairs(parent:GetChildren()) do
-				if v.Name == "CoreGui" then
-					continue
-				end
+                if v.Name == "CoreGui" then
+                    return
+                end
+                local name = tostring(v)
+                name = string.gsub(name, "\\", "")
                 if v:IsA("ModuleScript") or v:IsA("LocalScript") then
-					if loops < maxloops then loops += 1 else loops = 0; task.wait(.01) end
+                    if loops < maxloops then loops += 1 else loops = 0; task.wait(.01) end
                     local str = decompile(v)
-                    writefile(path.."/"..tostring(v)..".lua", "--Script Path: "..tostring(v:GetFullName()).."\n"..str)
+                    local success, err = pcall(function()
+                        writefile(path.."/"..name..".lua", "--Script Path: "..tostring(v:GetFullName()).."\n"..str)
+					end)
+                    if not success then
+						print(path)
+						error(err)
+					end
                 end
                 if v:FindFirstChildWhichIsA("ModuleScript", true) or v:FindFirstChildWhichIsA("LocalScript", true) then
-                    DumpChildren(v, path.."/"..tostring(v))
+                    DumpChildren(v, path.."/"..name)
                 end
             end
         end
         DumpChildren(instance, CurrentPath)
-        rconsoleprint("Dump finished.")
+        rconsoleprint("Dump finished: "..tostring(CurrentPath))
 	end)
     if not success then
 		print(err)
@@ -78,12 +91,14 @@ function SleepyDumper:DumpInstance(instance : Instance)
 end
 
 -- Example usage
---SleepyDumper:DumpInstance(game:GetService("Workspace"))
---SleepyDumper:DumpInstance(game:GetService("ReplicatedStorage"))
---SleepyDumper:DumpInstance(game:GetService("StarterPlayer"))
-
+SleepyDumper:DumpInstance(game:GetService("Workspace"))
+SleepyDumper:ChangeName("Blox Fruits")
+for i,v in pairs(game:GetService("ReplicatedStorage"):GetChildren()) do
+	SleepyDumper:DumpInstance(v)
+end
+SleepyDumper:DumpInstance(game:GetService("StarterPlayer"))
+SleepyDumper:DumpFunctions(game:GetService("Players").LocalPlayer)
 SleepyDumper:DumpFunctions()
-SleepyDumper:DumpInstance(game)
 
 
 
