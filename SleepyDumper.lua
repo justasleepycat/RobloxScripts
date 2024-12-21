@@ -83,7 +83,7 @@ end
 --SleepyDumper:DumpInstance(game:GetService("StarterPlayer"))
 
 SleepyDumper:DumpFunctions()
---SleepyDumper:DumpInstance(game)
+SleepyDumper:DumpInstance(game)
 
 
 
