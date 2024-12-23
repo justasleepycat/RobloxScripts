@@ -91,12 +91,12 @@ function SleepyDumper:DumpInstance(instance : Instance)
 end
 
 -- Example usage
-SleepyDumper:ChangeName("Blox Fruits")
+SleepyDumper:ChangeName("Fisch")
 
 SleepyDumper:DumpInstance(game:GetService("Workspace"))
 SleepyDumper:DumpInstance(game:GetService("StarterPlayer"))
 SleepyDumper:DumpFunctions(game:GetService("Players").LocalPlayer)
-SleepyDumper:ChangeName("Blox Fruits/ReplicatedStorage")
+SleepyDumper:ChangeName("Fisch/ReplicatedStorage")
 for i,v in pairs(game:GetService("ReplicatedStorage"):GetChildren()) do
 	SleepyDumper:DumpInstance(v)
 end
