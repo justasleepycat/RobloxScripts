@@ -116,8 +116,8 @@ EspObject.__index = EspObject;
 
 function EspObject.new(player, interface)
 	local self = setmetatable({}, EspObject);
-	self.player = player ~= nil and player or nil --assert(player, "Missing argument #1 (Player expected)");
-	self.interface = interface ~= nil and interface or nil --assert(interface, "Missing argument #2 (table expected)");
+	self.player = assert(player, "Missing argument #1 (Player expected)");
+	self.interface = assert(interface, "Missing argument #2 (table expected)");
 	self:Construct();
 	return self;
 end
@@ -421,8 +421,8 @@ ChamObject.__index = ChamObject;
 
 function ChamObject.new(player, interface)
 	local self = setmetatable({}, ChamObject);
-	self.player = player ~= nil and player or nil --assert(player, "Missing argument #1 (Player expected)");
-	self.interface = interface ~= nil and interface or nil --assert(interface, "Missing argument #2 (table expected)");
+	self.player = assert(player, "Missing argument #1 (Player expected)");
+	self.interface = assert(interface, "Missing argument #2 (table expected)");
 	self:Construct();
 	return self;
 end
@@ -466,8 +466,8 @@ InstanceObject.__index = InstanceObject;
 
 function InstanceObject.new(instance, options)
 	local self = setmetatable({}, InstanceObject);
-	self.instance = instance ~= nil and instance or nil --assert(instance, "Missing argument #1 (Instance Expected)");
-	self.options = options ~= nil and options or nil --assert(options, "Missing argument #2 (table expected)");
+	self.instance = assert(instance, "Missing argument #1 (Instance Expected)");
+	self.options = assert(options, "Missing argument #2 (table expected)");
 	self:Construct();
 	return self;
 end
@@ -645,7 +645,7 @@ local EspInterface = {
 function EspInterface.AddInstance(instance, options)
 	local cache = EspInterface._objectCache;
 	if cache[instance] then
-		--warn("Instance handler already exists.");
+		warn("Instance handler already exists.");
 	else
 		cache[instance] = { InstanceObject.new(instance, options) };
 	end
@@ -653,8 +653,8 @@ function EspInterface.AddInstance(instance, options)
 end
 
 function EspInterface.Load()
-	--assert(not EspInterface._hasLoaded, "Esp has already been loaded.");
-	return
+	assert(not EspInterface._hasLoaded, "Esp has already been loaded.");
+
 	local function createObject(player)
 		EspInterface._objectCache[player] = {
 			EspObject.new(player, EspInterface),
@@ -683,8 +683,7 @@ function EspInterface.Load()
 end
 
 function EspInterface.Unload()
-	return
-	--assert(EspInterface._hasLoaded, "Esp has not been loaded yet.");
+	assert(EspInterface._hasLoaded, "Esp has not been loaded yet.");
 
 	for index, object in next, EspInterface._objectCache do
 		for i = 1, #object do
