@@ -676,16 +676,16 @@ function ArrayFieldLibrary:Notify(NotificationSettings)
 		Notification.Name = NotificationSettings.Title or "Unknown Title"
 		Notification.Visible = true
 
-		local blurlight = nil
-		if not false then
-			blurlight = Instance.new("DepthOfFieldEffect",game:GetService("Lighting"))
-			blurlight.Enabled = true
-			blurlight.FarIntensity = 0
-			blurlight.FocusDistance = 51.6
-			blurlight.InFocusRadius = 50
-			blurlight.NearIntensity = 1
-			game:GetService("Debris"):AddItem(script,0)
-		end
+		--local blurlight = nil
+		--if not false then
+		--	blurlight = Instance.new("DepthOfFieldEffect",game:GetService("Lighting"))
+		--	blurlight.Enabled = true
+		--	blurlight.FarIntensity = 0
+		--	blurlight.FocusDistance = 51.6
+		--	blurlight.InFocusRadius = 50
+		--	blurlight.NearIntensity = 1
+		--	game:GetService("Debris"):AddItem(script,0)
+		--end
 
 		Notification.Actions.Template.Visible = false
 
@@ -807,7 +807,7 @@ function ArrayFieldLibrary:Notify(NotificationSettings)
 		wait(0.2)
 		if not false then
 			neon:UnbindFrame(Notification.BlurModule)
-			blurlight:Destroy()
+			--blurlight:Destroy()
 		end
 		wait(0.9)
 		Notification:Destroy()
