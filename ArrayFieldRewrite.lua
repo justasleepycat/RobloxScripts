@@ -12,8 +12,8 @@ Arrays  | Designing + Programming + New Features
 
 
 
-local Release = "Release 2A"
-local NotificationDuration = 6.5
+local Release = "Release 3"
+local NotificationDuration = 2.5
 local ArrayFieldFolder = "ArrayField"
 local ConfigurationFolder = ArrayFieldFolder.."/Configurations"
 local ConfigurationExtension = ".rfld"
@@ -126,10 +126,10 @@ if game["Run Service"]:IsStudio() then
 	function gethui() return ArrayField end local http_request = nil local syn = {protect_gui = false,request = false,}local http = nil function writefile(tt,t,ttt)end function isfolder(t)end function makefolder(t)end function isfile(r)end function readfile(t)end
 end
 
-pcall(function()
-	_G.LastRayField.Name = 'Old Arrayfield'
-	_G.LastRayField.Enabled = false
-end)
+--pcall(function()
+--	_G.LastRayField.Name = 'Old Arrayfield'
+--	_G.LastRayField.Enabled = false
+--end)
 local ParentObject = function(Gui)
 	local success, failure = pcall(function()
 		if get_hidden_gui or gethui then
@@ -708,7 +708,9 @@ function ArrayFieldLibrary:Notify(NotificationSettings)
 				NewAction.MouseButton1Click:Connect(function()
 					local Success, Response = pcall(Action.Callback)
 					if not Success then
-						print("ArrayField | Action: "..Action.Name.." Callback Error " ..tostring(Response))
+						pcall(function()
+							rconsoleprint("ArrayField | Action: "..Action.Name.." Callback Error " ..tostring(Response))
+						end)
 					end
 					ActionCompleted = true
 				end)
@@ -866,7 +868,7 @@ function Hide()
 			for _, element in ipairs(tab:GetChildren()) do
 				if element.ClassName == "Frame" then
 					if element.Name ~= "SectionSpacing" and element.Name ~= "Placeholder" then
-						print(element)
+						pcall(rconsoleprint, tostring(element))
 						if element:FindFirstChild('Holder') then
 							TweenService:Create(element, TweenInfo.new(0.2, Enum.EasingStyle.Quint), {BackgroundTransparency = 1}):Play()
 							TweenService:Create(element.Title, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
@@ -1281,7 +1283,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					Settings.KeySettings.Key[i] = string.gsub(Settings.KeySettings.Key[i], " ", "")
 				end)
 				if not Success then
-					print("ArrayField | "..Key.." Error " ..tostring(Response))
+					pcall(rconsoleprint, "ArrayField | "..Key.." Error " ..tostring(Response))
 				end
 			end
 		end
@@ -1712,7 +1714,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
 					TweenService:Create(Button.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 					Button.Title.Text = "Callback Error"
-					print("ArrayField | "..ButtonSettings.Name.." Callback Error " ..tostring(Response))
+					pcall(rconsoleprint, "ArrayField | "..ButtonSettings.Name.." Callback Error " ..tostring(Response))
 					wait(0.5)
 					Button.Title.Text = ButtonSettings.Name
 					TweenService:Create(Button, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
@@ -2035,7 +2037,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Input, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Input.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 					Input.Title.Text = "Callback Error"
-					print("ArrayField | "..InputSettings.Name.." Callback Error " ..tostring(Response))
+					pcall(rconsoleprint, "ArrayField | "..InputSettings.Name.." Callback Error " ..tostring(Response))
 					wait(0.5)
 					Input.Title.Text = InputSettings.Name
 					TweenService:Create(Input, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
@@ -2307,7 +2309,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					end)
 					if not Success then
 						Error('Callback Error')
-						print("ArrayField | "..DropdownSettings.Name.." Callback Error " ..tostring(Response))
+						pcall(rconsoleprint, "ArrayField | "..DropdownSettings.Name.." Callback Error " ..tostring(Response))
 					end
 
 					OptionInTable.Selected = true
@@ -2380,7 +2382,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 						TweenService:Create(Dropdown, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 						Dropdown.Title.Text = "Callback Error"
-						print("ArrayField | "..DropdownSettings.Name.." Callback Error " ..tostring(Response))
+						pcall(rconsoleprint, "ArrayField | "..DropdownSettings.Name.." Callback Error " ..tostring(Response))
 						wait(0.5)
 						Dropdown.Title.Text = DropdownSettings.Name
 						TweenService:Create(Dropdown, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
@@ -2559,7 +2561,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 							TweenService:Create(Keybind, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Keybind.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 							Keybind.Title.Text = "Callback Error"
-							print("ArrayField | "..KeybindSettings.Name.." Callback Error " ..tostring(Response))
+							pcall(rconsoleprint, "ArrayField | "..KeybindSettings.Name.." Callback Error " ..tostring(Response))
 							wait(0.5)
 							Keybind.Title.Text = KeybindSettings.Name
 							TweenService:Create(Keybind, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
@@ -2714,7 +2716,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Toggle, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 					Toggle.Title.Text = "Callback Error"
-					print("ArrayField | "..ToggleSettings.Name.." Callback Error " ..tostring(Response))
+					pcall(rconsoleprint, "ArrayField | "..ToggleSettings.Name.." Callback Error " ..tostring(Response))
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
@@ -2760,7 +2762,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Toggle, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 					Toggle.Title.Text = "Callback Error"
-					print("ArrayField | "..ToggleSettings.Name.." Callback Error " ..tostring(Response))
+					pcall(rconsoleprint, "ArrayField | "..ToggleSettings.Name.." Callback Error " ..tostring(Response))
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
@@ -3181,7 +3183,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 						TweenService:Create(Slider, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Slider.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 						Slider.Title.Text = "Callback Error"
-						print("ArrayField | "..SliderSettings.Name.." Callback Error " ..tostring(Response))
+						pcall(rconsoleprint, "ArrayField | "..SliderSettings.Name.." Callback Error " ..tostring(Response))
 						wait(0.5)
 						Slider.Title.Text = SliderSettings.Name
 						TweenService:Create(Slider, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
@@ -3218,7 +3220,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 					TweenService:Create(Slider, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Slider.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 					Slider.Title.Text = "Callback Error"
-					print("ArrayField | "..SliderSettings.Name.." Callback Error " ..tostring(Response))
+					pcall(rconsoleprint, "ArrayField | "..SliderSettings.Name.." Callback Error " ..tostring(Response))
 					wait(0.5)
 					Slider.Title.Text = SliderSettings.Name
 					TweenService:Create(Slider, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
@@ -3320,7 +3322,7 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 
 		if PromptSettings.Actions then
 			for name,info in pairs(PromptSettings.Actions) do
-				print(info)
+				pcall(rconsoleprint, tostring(info))
 				local Button = PromptUI.Buttons.Template:Clone()
 				Button.TextLabel.Text = info.Name
 				Button.Interact.MouseButton1Up:Connect(function()
