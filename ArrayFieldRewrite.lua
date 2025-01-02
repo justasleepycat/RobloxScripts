@@ -145,7 +145,7 @@ local ParentObject = function(Gui)
 	if not success and failure then
 		Gui.Parent = LocalPlayer:FindFirstChildWhichIsA("PlayerGui")
 	end
-	_G.LastRayField = ArrayField
+	--_G.LastRayField = ArrayField
 end
 ParentObject(ArrayField)
 
@@ -889,13 +889,13 @@ function Hide()
 			end
 		end
 	end
-	wait(0.5)
+	wait(0.05)
 	Main.Visible = false
 	Debounce = false
 end
 function Unhide()
 	Debounce = true
-	Main.Position = UDim2.new(0.5, 0, 0.5, 0)
+	--Main.Position = UDim2.new(0.5, 0, 0.5, 0)
 	Main.Visible = true
 	TweenService:Create(Main, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {Size = UDim2.new(0, 500, 0, 475)}):Play()
 	TweenService:Create(Main.Topbar, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {Size = UDim2.new(0, 500, 0, 45)}):Play()
@@ -952,7 +952,7 @@ function Unhide()
 			end
 		end
 	end
-	wait(0.5)
+	wait(0.05)
 	Minimised = false
 	Debounce = false
 end
