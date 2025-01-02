@@ -126,10 +126,10 @@ if game["Run Service"]:IsStudio() then
 	function gethui() return ArrayField end local http_request = nil local syn = {protect_gui = false,request = false,}local http = nil function writefile(tt,t,ttt)end function isfolder(t)end function makefolder(t)end function isfile(r)end function readfile(t)end
 end
 
---pcall(function()
---	_G.LastRayField.Name = 'Old Arrayfield'
---	_G.LastRayField.Enabled = false
---end)
+pcall(function()
+	_G.LastRayField.Name = 'Old Arrayfield'
+	_G.LastRayField.Enabled = false
+end)
 local ParentObject = function(Gui)
 	local success, failure = pcall(function()
 		if get_hidden_gui or gethui then
@@ -145,7 +145,7 @@ local ParentObject = function(Gui)
 	if not success and failure then
 		Gui.Parent = LocalPlayer:FindFirstChildWhichIsA("PlayerGui")
 	end
-	--_G.LastRayField = ArrayField
+	_G.LastRayField = ArrayField
 end
 ParentObject(ArrayField)
 
@@ -893,7 +893,7 @@ function Hide()
 end
 function Unhide()
 	Debounce = true
-	--Main.Position = UDim2.new(0.5, 0, 0.5, 0)
+	Main.Position = UDim2.new(0.5, 0, 0.5, 0)
 	Main.Visible = true
 	TweenService:Create(Main, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {Size = UDim2.new(0, 500, 0, 475)}):Play()
 	TweenService:Create(Main.Topbar, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {Size = UDim2.new(0, 500, 0, 45)}):Play()
@@ -1483,8 +1483,8 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 	ArrayField.Enabled = true
 	for _,tabbtn in pairs(SideList:GetChildren()) do
 		if tabbtn.ClassName == "Frame" and tabbtn.Name ~= "Placeholder" then
-			TweenService:Create(tabbtn.Title, TweenInfo.new(0.1, Enum.EasingStyle.Quint),{TextTransparency = 1}):Play()
-			TweenService:Create(tabbtn.Image, TweenInfo.new(0.1, Enum.EasingStyle.Quint),{ImageTransparency = 1}):Play()
+			TweenService:Create(tabbtn.Title, TweenInfo.new(0.3, Enum.EasingStyle.Quint),{TextTransparency = 1}):Play()
+			TweenService:Create(tabbtn.Image, TweenInfo.new(0.3, Enum.EasingStyle.Quint),{ImageTransparency = 1}):Play()
 		end
 	end
 	TweenService:Create(Main.SideTabList, TweenInfo.new(0, Enum.EasingStyle.Quint), {BackgroundTransparency = 1,Size = UDim2.new(0,150,0,390),Position = UDim2.new(0,10,0.5,22)}):Play()
@@ -1705,31 +1705,29 @@ function ArrayFieldLibrary:CreateWindow(Settings)
 			TweenService:Create(Button.Title, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()	
 
 			Button.Interact.MouseButton1Click:Connect(function()
-                pcall(function()
-                    if ButtonValue.Locked then return end
-                    local Success, Response = pcall(ButtonSettings.Callback)
-                    if not Success then
-                        TweenService:Create(Button, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
-                        TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
-                        TweenService:Create(Button.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
-                        Button.Title.Text = "Callback Error"
-                        print("ArrayField | "..ButtonSettings.Name.." Callback Error " ..tostring(Response))
-                        wait(0.5)
-                        Button.Title.Text = ButtonSettings.Name
-                        TweenService:Create(Button, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
-                        TweenService:Create(Button.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
-                        TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 0.9}):Play()
-                    else
-                        SaveConfiguration()
-                        TweenService:Create(Button, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackgroundHover}):Play()
-                        TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
-                        TweenService:Create(Button.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
-                        wait(0.2)
-                        TweenService:Create(Button, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
-                        TweenService:Create(Button.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
-                        TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 0.9}):Play()
-                    end
-                end)
+				if ButtonValue.Locked then return end
+				local Success, Response = pcall(ButtonSettings.Callback)
+				if not Success then
+					TweenService:Create(Button, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
+					TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
+					TweenService:Create(Button.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
+					Button.Title.Text = "Callback Error"
+					print("ArrayField | "..ButtonSettings.Name.." Callback Error " ..tostring(Response))
+					wait(0.5)
+					Button.Title.Text = ButtonSettings.Name
+					TweenService:Create(Button, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
+					TweenService:Create(Button.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
+					TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 0.9}):Play()
+				else
+					SaveConfiguration()
+					TweenService:Create(Button, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackgroundHover}):Play()
+					TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
+					TweenService:Create(Button.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
+					wait(0.2)
+					TweenService:Create(Button, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = SelectedTheme.ElementBackground}):Play()
+					TweenService:Create(Button.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
+					TweenService:Create(Button.ElementIndicator, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 0.9}):Play()
+				end
 			end)
 
 			Button.MouseEnter:Connect(function()
@@ -3371,9 +3369,7 @@ end
 
 
 function ArrayFieldLibrary:Destroy()
-    pcall(function()
-	    ArrayField:Destroy()
-    end)
+	ArrayField:Destroy()
 end
 
 Topbar.ChangeSize.MouseButton1Click:Connect(function()
