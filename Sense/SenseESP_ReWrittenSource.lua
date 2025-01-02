@@ -212,6 +212,7 @@ function EspObject:Update()
 
 	local _, onScreen, depth = worldToScreen(head.Position);
 	self.onScreen = onScreen;
+	depth = depth/3.5713684210526315789473684210526
 	self.distance = depth;
 
 	if interface.sharedSettings.limitDistance and depth > interface.sharedSettings.maxDistance then
