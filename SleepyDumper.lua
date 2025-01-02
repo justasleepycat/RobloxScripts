@@ -59,7 +59,7 @@ function SleepyDumper:DumpInstance(instance : Instance)
                 return
             end
 			makefolder(path)
-
+            
             for i,v in pairs(parent:GetChildren()) do
                 if v.Name == "CoreGui" then
                     return
@@ -69,6 +69,7 @@ function SleepyDumper:DumpInstance(instance : Instance)
                 if v:IsA("ModuleScript") or v:IsA("LocalScript") then
                     if loops < maxloops then loops += 1 else loops = 0; task.wait(.01) end
                     local str = decompile(v)
+                    pcall(rconsoleprint, "Dumped "..tostring(v))
                     local success, err = pcall(function()
                         writefile(path.."/"..name..".lua", "--Script Path: "..tostring(v:GetFullName()).."\n"..str)
 					end)
@@ -91,16 +92,10 @@ function SleepyDumper:DumpInstance(instance : Instance)
 end
 
 -- Example usage
-SleepyDumper:ChangeName("Fisch")
-
-SleepyDumper:DumpInstance(game:GetService("Workspace"))
-SleepyDumper:DumpInstance(game:GetService("StarterPlayer"))
-SleepyDumper:DumpFunctions(game:GetService("Players").LocalPlayer)
-SleepyDumper:ChangeName("Fisch/ReplicatedStorage")
-for i,v in pairs(game:GetService("ReplicatedStorage"):GetChildren()) do
-	SleepyDumper:DumpInstance(v)
-end
-
+game:GetService("Players").LocalPlayer:Kick("Dumping")
+game:GetService("GuiService"):ClearError()
+SleepyDumper:ChangeName("Apocalypse Rising 2")
+SleepyDumper:DumpInstance(game:GetService("ReplicatedStorage"))
 SleepyDumper:DumpFunctions()
 
 
