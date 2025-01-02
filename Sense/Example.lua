@@ -1,4 +1,4 @@
-local Sense = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Sense/SenseESP_ReWrittenSource.lua"))
+local Sense = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Sense/SenseESP_ReWrittenSource.lua"))()
 print(Sense)
 
 -- Player ESP

@@ -1,6 +1,5 @@
 local Vehicles = game:GetService("Workspace").Vehicles.Spawned
-local Sense = loadstring(game:HttpGet('https://sirius.menu/sense'))()
-print(Sense)
+local Sense = loadstring(game:HttpGet('https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Sense/SenseESP_ReWrittenSource.lua'))()
 -- Player ESP
 -- Shared Settings
 Sense.sharedSettings.limitDistance = true
