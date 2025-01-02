@@ -313,11 +313,11 @@ function AddInfos(Object:Frame,Settings,type)
 		--if not (input.UserInputType == Enum.UserInputType.MouseButton2) then return end
 		if Settings and Settings.Info then
 			InfoPromptOpen = true
-			FadeDescription(Settings,type)
+			pcall(FadeDescription, Settings,type)
 		end
 	end)
 	Object.MouseLeave:Connect(function()
-		FadeDescription(nil,nil,true)
+		pcall(FadeDescription, nil,nil,true)
 	end)
 end
 local function PackColor(Color)
@@ -836,7 +836,7 @@ function Hide()
 		spawn(CloseSideBar)
 	end
 	spawn(function()
-		FadeDescription(nil,true)
+		pcall(FadeDescription, nil,true)
 	end)
 	Debounce = true
 	ArrayFieldLibrary:Notify({Title = "Interface Hidden", Content = "The interface has been hidden, you can unhide the interface by tapping Home", Duration = 7})
@@ -1127,7 +1127,7 @@ function Minimise()
 		spawn(CloseSideBar)
 	end
 	spawn(function()
-		FadeDescription(nil,true)
+		pcall(FadeDescription, nil,true)
 	end)
 	for _, tabbtn in ipairs(TopList:GetChildren()) do
 		if tabbtn.ClassName == "Frame" and tabbtn.Name ~= "Placeholder" then
