@@ -140,6 +140,9 @@ repeat task.wait()
     if table.find(VirtualKeyCodes:GetCurrentPressedKeys(), "VK_LBUTTON") then
 		break
 	end
+    if game:GetService("UserInputService"):IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        break
+    end
 until false
 print("done")
 end
