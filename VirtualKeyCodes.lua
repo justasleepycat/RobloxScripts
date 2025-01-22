@@ -1,3 +1,4 @@
+-- local VirtualKeyCodes = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/VirtualKeyCodes.lua"))()
 local VirtualKeyCodes = {
     [0x01] = "VK_LBUTTON",       -- Left mouse button
     [0x02] = "VK_RBUTTON",       -- Right mouse button

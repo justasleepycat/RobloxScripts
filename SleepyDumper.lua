@@ -72,6 +72,7 @@ function SleepyDumper:DumpInstance(instance : Instance)
                     pcall(rconsoleprint, "Dumped "..tostring(v))
                     local success, err = pcall(function()
                         writefile(path.."/"..name..".lua", "--Script Path: "..tostring(v:GetFullName()).."\n"..str)
+                        writefile(path.."/"..name..".bytecode", tostring(getscriptbytecode(v)))
 					end)
                     if not success then
 						print(path)
@@ -94,7 +95,7 @@ end
 -- Example usage
 game:GetService("Players").LocalPlayer:Kick("Dumping")
 game:GetService("GuiService"):ClearError()
-SleepyDumper:ChangeName("Apocalypse Rising 2")
+SleepyDumper:ChangeName("Lost Rooms")
 SleepyDumper:DumpInstance(game:GetService("ReplicatedStorage"))
 SleepyDumper:DumpFunctions()
 
