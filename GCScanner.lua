@@ -48,8 +48,6 @@ function GCScanner:FindValuesByIndex(list)
     return foundVars
 end
 
-
-
 -- Example
 if false then
     GCScanner:ModifyValuesByIndex({

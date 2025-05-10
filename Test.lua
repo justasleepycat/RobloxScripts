@@ -1,1 +1,10 @@
-local VirtualKeyCodes = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/VirtualKeyCodes.lua"))()
+for i,v in pairs(getgc(true)) do
+    pcall(function()
+        if rawget(v,"Recoil") then
+            v.Recoil = 0
+        end
+        if rawget(v,"Accuracy") then
+            v.Accuracy = 2
+        end
+    end)
+end

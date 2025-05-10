@@ -16,8 +16,8 @@ function SleepyDumper:DumpFunctions(config)
                 if typeof(v) == "function" then
                     local FuncInfo = getinfo(v)
                     if FuncInfo then
-						local isInternalFunction = issynapsefunction ~= nil and issynapsefunction or is_synapse_function ~= nil and is_synapse_function
-                        if isInternalFunction(v) then return end
+						--local isInternalFunction = issynapsefunction ~= nil and issynapsefunction or is_synapse_function ~= nil and is_synapse_function
+                        --if isInternalFunction(v) then return end
                         local FuncName = FuncInfo.name
                         local FuncSource = FuncInfo.source
                         if FuncSource == "=[C]" then return end
@@ -28,7 +28,7 @@ function SleepyDumper:DumpFunctions(config)
                 end
 			end)
             if not success then
-				rconsoleprint(err)
+				print(err)
 			end
         end
         writefile(scriptPath.."/DumpedFunctions.lua", "")
@@ -40,7 +40,7 @@ function SleepyDumper:DumpFunctions(config)
 		end
 	end)
     if not success then
-		rconsoleprint(err)
+		print(err)
 	end
 end
 
@@ -85,7 +85,7 @@ function SleepyDumper:DumpInstance(instance : Instance)
             end
         end
         DumpChildren(instance, CurrentPath)
-        rconsoleprint("Dump finished: "..tostring(CurrentPath))
+        print("Dump finished: "..tostring(CurrentPath))
 	end)
     if not success then
 		print(err)
@@ -95,9 +95,13 @@ end
 -- Example usage
 game:GetService("Players").LocalPlayer:Kick("Dumping")
 game:GetService("GuiService"):ClearError()
-SleepyDumper:ChangeName("Lost Rooms")
+SleepyDumper:ChangeName("Criminality")
+SleepyDumper:DumpInstance(game:GetService("Workspace"))
 SleepyDumper:DumpInstance(game:GetService("ReplicatedStorage"))
+SleepyDumper:DumpInstance(game:GetService("Players"))
 SleepyDumper:DumpFunctions()
+print("Dumped Functions")
+print("Finished Dumping!")
 
 
 
