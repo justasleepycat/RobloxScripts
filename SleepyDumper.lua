@@ -1,4 +1,4 @@
-local SleepyDumper = {}
+local SleepyDumper = {} -- local SleepyDumper = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/SleepyDumper.lua"))()
 
 makefolder("DumpedScripts")
 local scriptPath = ("DumpedScripts/%s"):format("Test") -- game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
