@@ -69,7 +69,7 @@ function SleepyDumper:DumpInstance(instance : Instance)
                 if v:IsA("ModuleScript") or v:IsA("LocalScript") then
                     if loops < maxloops then loops += 1 else loops = 0; task.wait(.01) end
                     local str = decompile(v)
-                    pcall(rconsoleprint, "Dumped "..tostring(v))
+                    pcall(print, "Dumped "..tostring(v))
                     local success, err = pcall(function()
                         writefile(path.."/"..name..".lua", "--Script Path: "..tostring(v:GetFullName()).."\n"..str)
                         writefile(path.."/"..name..".bytecode", tostring(getscriptbytecode(v)))
@@ -95,10 +95,10 @@ end
 -- Example usage
 game:GetService("Players").LocalPlayer:Kick("Dumping")
 game:GetService("GuiService"):ClearError()
-SleepyDumper:ChangeName("Criminality")
+SleepyDumper:ChangeName("Twisted")
 SleepyDumper:DumpInstance(game:GetService("Workspace"))
 SleepyDumper:DumpInstance(game:GetService("ReplicatedStorage"))
-SleepyDumper:DumpInstance(game:GetService("Players"))
+SleepyDumper:DumpInstance(game:GetService("Players").LocalPlayer)
 SleepyDumper:DumpFunctions()
 print("Dumped Functions")
 print("Finished Dumping!")
