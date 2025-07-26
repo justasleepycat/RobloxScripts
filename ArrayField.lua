@@ -74,6 +74,7 @@ ArrayField:Notify({
     Content = "Notification Content",
     Duration = 6.5,
     Image = 4483362458,
+    Sectionparent = Section,
     Actions = { -- Notification Buttons
        Ignore = {
           Name = "Okay!",
