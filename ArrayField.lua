@@ -68,6 +68,7 @@ Window:Prompt({
 
 local Tab = Window:CreateTab("Tab Example", 4483362458) -- Title, Image
 local Section = Tab:CreateSection("Section Example",false) -- The 2nd argument is to tell if its only a Title and doesnt contain element
+local settingsSection = Tab:CreateSection("Settings",false) -- The 2nd argument is to tell if its only a Title and doesnt contain element
 
 ArrayField:Notify({
     Title = "Notification Title",
@@ -155,6 +156,7 @@ local Keybind = Tab:CreateKeybind({
     Name = "Keybind Example",
     CurrentKeybind = "Q",
     HoldToInteract = false,
+    SectionParent = Section,
     Flag = "Keybind1", -- A flag is the identifier for the configuration file, make sure every element has a different flag if you're using configuration saving to ensure no overlaps
     Callback = function(Keybind)
     -- The function that takes place when the keybind is pressed
@@ -169,6 +171,7 @@ Label:Set("Label Example")
 local ExitButton = Tab:CreateButton({
     Name = "Exit",
     Interact = 'Click',
+    SectionParent = settingsSection,
     Callback = function()
         ArrayField:Destroy()
     end

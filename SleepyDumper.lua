@@ -93,13 +93,14 @@ function SleepyDumper:DumpInstance(instance : Instance)
 end
 
 -- Example usage
-game:GetService("Players").LocalPlayer:Kick("Dumping")
-game:GetService("GuiService"):ClearError()
-SleepyDumper:ChangeName("Twisted")
+--game:GetService("Players").LocalPlayer:Kick("Dumping")
+--game:GetService("GuiService"):ClearError()
+SleepyDumper:ChangeName("Just Daytona")
 SleepyDumper:DumpInstance(game:GetService("Workspace"))
 SleepyDumper:DumpInstance(game:GetService("ReplicatedStorage"))
 SleepyDumper:DumpInstance(game:GetService("ReplicatedFirst"))
 SleepyDumper:DumpInstance(game:GetService("Players"))
+SleepyDumper:DumpInstance(game:GetService("StarterPlayer"))
 SleepyDumper:DumpFunctions()
 print("Dumped Functions")
 print("Finished Dumping!")

@@ -1,122 +1,178 @@
-local Workspace = game:GetService("Workspace")
--- https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Hooking.lua
--- local HookingService = loadstring(game:HttpGet("https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Hooking.lua"))()
-local HookingService = {}
--- Test
-HookingService.methodHooks = {
-    RemoteEvent = Instance.new("RemoteEvent").FireServer,
-    RemoteFunction = Instance.new("RemoteFunction").InvokeServer,
-    BindableEvent = Instance.new("BindableEvent").Fire,
-    BindableFunction = Instance.new("BindableFunction").Invoke
-}
+local RunService = game:GetService("RunService")
+local success, ret = pcall(function()
+    -- local targetName    = "Hak7Mod"
+    -- local target        = game.Players:FindFirstChild(targetName).Character
 
-function HookingService:Hook(a, b)
-    hookfunction(a, b)
-end
-
-function HookingService:DisableConnection(Signal)
-    for _, v in next, getconnections(Signal) do
-        v:Disable()
+    local function GetStretcherTool()
+        return game.Players.LocalPlayer.Character.Stretcher
     end
-end
 
-function HookingService:IndexSpoof(Object, Property, Value)
-    local index
-    index = hookmetamethod(Object ~= nil and Object or game, "__index", function(self, key, ...)
-        if key == Property then
-			print(Value)
-            return Value
-        end
+    local function GetStretcherSeat()
+        return GetStretcherTool().Model:FindFirstChildWhichIsA("Seat")
+    end
 
-        return index(self, key, ...)
-    end)
-end
+    local function GetTargetCFrame()
+        local velocity = target.HumanoidRootPart.AssemblyLinearVelocity
 
-function HookingService:NameCallSpoof(CallMethod, IgnoreSelfCaller, Function)
-    local namecall
-    namecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-        local caller = checkcaller()
-        local method = getnamecallmethod()
-        if method ~= CallMethod then
-            return namecall(self, ...)
-        end
+        return target:GetPivot() + Vector3.new(velocity.x * 0.8, velocity * 0.2, velocity * 0.8)
+    end
 
-        if IgnoreSelfCaller and caller then
-            return namecall(self, ...)
-        end
-
-        if Function then
-            return Function(namecall, self, ...)
-        end
-    
-        return namecall(self, ...)
-	end))
-end
-
-function HookingService:SpoofAttribute(Object, Attribute, Value)
-    local namecall
-    namecall = hookmetamethod(Object, "__namecall", newcclosure(function(self, ...)
-        local caller = checkcaller()
-        local method = getnamecallmethod()
-        local args = {...}
-        local result = namecall(self, ...)
-        local success, err = pcall(function()
-            if method == "GetAttribute" then
-				if self == nil then return end
-                if typeof(result) ~= typeof(Value) then return end
-                if typeof(self) ~= "Instance" then return end
-                if self == Object or Object == nil then
-                    if tostring(args[1] == Attribute) then
-                        result = Value
-                    end
-                end
+    local function GetLocalVehicle()
+        for i,v in game.Workspace.SessionVehicles:GetChildren() do
+            if not string.find(v.Name, game.Players.LocalPlayer.Name) then
+                continue
             end
-		end)
-    
-        return result
-	end))
-end
 
-function HookingService:HookRemote(Remote, Function)
-    local namecall
-    namecall = hookmetamethod(game, "__namecall", function(self, ...)
-        local args = {...}
+            return v
+        end
+    end
 
-        if not checkcaller() and self == Remote then
-            if getnamecallmethod() == "FireServer" or getnamecallmethod() == "InvokeServer" then
-                return Function(namecall, self, ...)
+    local function GetVehicleWheels(vehicle)
+        local wheels = {}
+
+        for i,v in vehicle.Wheels:GetChildren() do
+            local wheel = v.Parts.Wheels.Wheel
+
+            table.insert(wheels, wheel)
+        end
+        
+        -- vehicle.Wheels.FL.Parts.Wheels.Wheel
+
+        return wheels
+    end
+
+    local function SetStretcherClientScriptState(newState : boolean)
+        local stretcher     = GetStretcherTool()
+        stretcher.ClientTool.Disabled = not newState
+    end
+
+    local function TryTeleportStretcherToPlayer(stretcher, stretcherSeat)
+        SetStretcherClientScriptState(false)
+
+        local playerFound = false
+        for i = 1,333 do task.wait()
+            if stretcherSeat.Occupant then
+                playerFound = true
+                break
+            end
+
+            local targetCF = GetTargetCFrame()
+
+            stretcher.Model:PivotTo(targetCF - targetCF.LookVector * 3)
+        end
+
+        return playerFound
+    end
+
+    local function VoidTarget(stretcher, stretcherSeat)
+        if not stretcher or not stretcherSeat then
+            SetStretcherClientScriptState(true)
+        end
+
+        if TryTeleportStretcherToPlayer(stretcher, stretcherSeat) then
+            stretcher.Model:PivotTo(CFrame.new(0, -1e12, 0))
+            task.wait(.05)
+        end
+
+        SetStretcherClientScriptState(true)
+        game.Players.LocalPlayer.Character.Humanoid:UnequipTools()
+    end
+
+    local function CreateVelocitySpoofer(target : Instance, options : { [string] : any }?)
+        local settings     = options or {}
+        local strength     = settings.Strength or Vector3.one
+        local onSpoof      = settings.OnSpoof
+
+        local spoofing     = false
+        local wishVelocity = Vector3.zero
+
+        -- Applies velocity to every part for a single frame, then puts each part back as it was.
+        local function Spoof(velocity : Vector3)
+            local parts    = CollectBaseParts(target)
+            local previous = table.create(#parts)
+
+            for index, part in ipairs(parts) do
+                previous[index] = part.AssemblyLinearVelocity
+            end
+
+            local spoofed = velocity * strength
+            for _, part in ipairs(parts) do
+                part.AssemblyLinearVelocity = spoofed
+            end
+
+            if onSpoof then
+                onSpoof(spoofed)
+            end
+
+            RunService.RenderStepped:Wait()
+
+            for index, part in ipairs(parts) do
+                part.AssemblyLinearVelocity = previous[index]
             end
         end
 
-        return namecall(self, ...)
-    end)
-end
+        return {
+            Connection  = game:GetService("RunService").PostSimulation:Connect(function(deltaTime : double)
+                if not spoofing then return end
+                Spoof(wishVelocity)
+            end),
+            SetVelocity = function(velocity : Vector3)
+                wishVelocity = velocity
+                spoofing     = true
+            end,
+            Spoof       = Spoof,
+        }
+    end
 
-function HookingService:ProtectGui(Object)
-    Object.Parent = game.CoreGui
-
-    local namecall
-    namecall = hookmetamethod(game, "__namecall", function(self, key, ...)
-        if not checkcaller() and self == game.CoreGui and getnamecallmethod() == "FindFirstChild" and key == Object.Name then
-            return
+    local function TeleportTargetToPosition(stretcher, stretcherSeat, targetCFrame)
+        if not stretcher or not stretcherSeat then
+            SetStretcherClientScriptState(true)
         end
 
-        return namecall(self, key, ...)
-    end)
-
-    local index
-    index = hookmetamethod(game, "__index", function(self, key, ...)
-        if not checkcaller() and self == game.CoreGui and key == Object.Name then
-            return
+        if TryTeleportStretcherToPlayer(stretcher, stretcherSeat) then
+            stretcher.Model:PivotTo(targetCFrame)
+            task.wait(.2)
         end
 
-        return index(self, key, ...)
-    end)
-end
+        SetStretcherClientScriptState(true)
+        game.Players.LocalPlayer.Character.Humanoid:UnequipTools()
+    end
 
+    -- local stretcherSeat = GetStretcherSeat()
+    -- local stretcher     = GetStretcherTool()
 
-HookingService:NameCallSpoof("Raycast", false, function(namecall, self, ...)
-    rconsoleprint()
-    return namecall(self, ...)
+    -- VoidTarget(stretcher, stretcherSeat)
+    -- TeleportTargetToPosition(stretcher, stretcherSeat, CFrame.new(1e16, 1e16, 1e16))
+
+    -- [EXAMPLE_INSTANCE] = {CFrame.new()}
+    local cachedPivots = {}
+    local ownedVehicle = GetLocalVehicle()
+
+    for i, instance in ownedVehicle:GetDescendants() do
+        pcall(function()
+            if instance:GetPivot() then
+                cachedPivots[instance] = instance:GetPivot()
+            end
+        end)
+    end
+
+    task.wait(5)
+
+    for i, instance in pairs(ownedVehicle:GetDescendants()) do
+        pcall(function()
+            instance.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            if cachedPivots[instance] then
+                instance:PivotTo(cachedPivots[instance] + Vector3.new(0, 5, 0))
+            end
+        end)
+    end
 end)
 
+if not success then
+    rconsoleprint(ret)
+end
+
+local conn; conn = game:GetService("RunService"):BindToRenderStep("goon", 0, function()
+    print("e")
+    game:GetService("RunService"):UnbindFromRenderStep("goon")
+end)

@@ -10,8 +10,6 @@ Arrays  | Designing + Programming + New Features
 
 ]]
 
-
-
 local Release = "Release 3"
 local NotificationDuration = 2.5
 local ArrayFieldFolder = "ArrayField"

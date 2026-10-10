@@ -31,14 +31,14 @@ local function UpdateLine3D(line, config)
     line.CFrame = CFrame.new(config.From + Direction/2)
     line:PivotTo(CFrame.lookAt(line.CFrame.Position, config.To))
     line.Color = config.Color
-    line.Size = Vector3.new(0.1, 0.1, length)
+    line.Size = Vector3.new(config.Width or 0.1, config.Width or 0.1, length)
 end
 
 
 
 
 
--- Example Usage
+--[[ Example usage
 local funiLine = DrawLine3D({
     From = game.Players.LocalPlayer.Character:GetPivot().Position,
     To = Workspace.CurrentCamera.CFrame.Position,
@@ -49,7 +49,14 @@ for i = 1,1000 do task.wait(.001)
 	UpdateLine3D(funiLine, {
         From = game.Players.LocalPlayer.Character:GetPivot().Position,
         To = game.Players.LocalPlayer.Character:GetPivot().Position + game.Players.LocalPlayer.Character:GetPivot().LookVector*10,
-        Color = Color3.new(1,0,0)
+        Color = Color3.new(1,0,0),
+        Width = 1
     })
 end
 funiLine:Destroy()
+]]
+
+return {
+    DrawLine3D   = DrawLine3D,
+    UpdateLine3D = UpdateLine3D,
+}
