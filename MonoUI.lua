@@ -1,4 +1,4 @@
--- Latest update: 10/11/2026 2:43 PM
+-- Latest update: 10/11/2026 2:48 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -950,7 +950,7 @@ end
 
 --=== app ===================================================================
 
-local App = { gui = nil, blur = nil, blurOwned = false, connections = {}, windows = {}, plates = {} }
+local App = { gui = nil, blur = nil, blurOwned = false, blurWasEnabled = true, connections = {}, windows = {}, plates = {}, surfaces = {} }
 
 local function EnsureGui(name)
     if App.gui ~= nil and App.gui.Parent ~= nil then
@@ -979,6 +979,7 @@ local function EnsureBlur(settings)
 
     local existing = Lighting:FindFirstChild("MonoUIBlur")
     App.blurOwned = existing == nil                                                             -- only ever remove what this made
+    App.blurWasEnabled = existing == nil or existing.Enabled                                    -- and put back what was found
     App.blur = existing or Element {
         ClassName = "BlurEffect",
         Parent    = Lighting,
@@ -986,6 +987,40 @@ local function EnsureBlur(settings)
         Size      = settings.Blur or Theme.Blur,
     }
     return App.blur
+end
+
+-- The blur follows the surfaces that asked for it: with every window hidden there is nothing to
+-- blur, so it gets switched off instead of softening the whole game behind a UI nobody can see.
+local function SyncBlur()
+    if App.blur == nil or App.blur.Parent == nil then
+        return
+    end
+
+    local wanted = false
+    for _, surface in ipairs(App.surfaces) do
+        if surface.visible and surface.wantsBlur then
+            wanted = true
+            break
+        end
+    end
+    App.blur.Enabled = wanted
+end
+
+-- Windows and plates both register here, so SyncBlur has one list to read.
+local function RegisterSurface(surface, settings)
+    surface.wantsBlur = EnsureBlur(settings) ~= nil
+    surface.visible   = surface.visible and true or false
+    App.surfaces[#App.surfaces + 1] = surface
+    SyncBlur()
+    return surface
+end
+
+local function UnregisterSurface(surface)
+    local index = table.find(App.surfaces, surface)
+    if index ~= nil then
+        table.remove(App.surfaces, index)
+    end
+    SyncBlur()
 end
 
 -- One plate: the window surface itself, with the title bar, the hint line and the drag.
@@ -1082,6 +1117,7 @@ function MonoUI:CreatePlate(settings)
         bar = bar,
         status = status,
         settings = settings,
+        visible = true,
     }
     App.plates[#App.plates + 1] = object
 
@@ -1103,7 +1139,7 @@ function MonoUI:CreatePlate(settings)
     end
     object.region = region
 
-    EnsureBlur(settings)
+    RegisterSurface(object, settings)
     Dragging(object, plate, bar)
 
     hint.Text = settings.Hint or (settings.ToggleKey and (string.upper(tostring(settings.ToggleKey.Name)) .. " TO HIDE") or "")
@@ -1114,8 +1150,10 @@ function MonoUI:CreatePlate(settings)
     end
 
     function object:SetVisible(visible)
-        plate.Visible = visible and true or false
-        return plate.Visible
+        object.visible = visible and true or false
+        plate.Visible  = object.visible
+        SyncBlur()
+        return object.visible
     end
 
     function object:Destroy()
@@ -1125,6 +1163,7 @@ function MonoUI:CreatePlate(settings)
             end)
         end
         table.clear(object.connections)
+        UnregisterSurface(object)
         pcall(function()
             plate:Destroy()
         end)
@@ -1141,7 +1180,6 @@ function MonoUI:CreateWindow(settings)
 
     local name = tostring(settings.Name or "MONOUI")
     EnsureGui(settings.GuiName or name)
-    EnsureBlur(settings)
 
     local window = {
         connections = {},
@@ -1152,6 +1190,7 @@ function MonoUI:CreateWindow(settings)
         visible = not settings.StartHidden,
     }
     App.windows[#App.windows + 1] = window
+    RegisterSurface(window, settings)
 
     local plate, bar, hint, status = CreatePlateFrame(settings, #App.windows)
     window.plate = plate
@@ -1225,6 +1264,7 @@ function MonoUI:CreateWindow(settings)
         window.visible    = visible and true or false
         plate.Visible     = window.visible
         chip.Visible      = not window.visible
+        SyncBlur()
         return window.visible
     end
 
@@ -1309,22 +1349,34 @@ function MonoUI:CreateWindow(settings)
         end
 
         -- every plate lives in the one gui, so the app goes together
-        local gui  = App.gui
-        local blur = App.blurOwned and App.blur or nil
-        App.gui      = nil
-        App.blur     = nil
+        local gui        = App.gui
+        local blur       = App.blur
+        local ownedBlur  = App.blurOwned
+        local wasEnabled = App.blurWasEnabled
+
+        UnregisterSurface(window)
+
+        App.gui       = nil
+        App.blur      = nil
         App.blurOwned = false
-        App.windows  = {}
-        App.plates   = {}
+        App.windows   = {}
+        App.plates    = {}
+        App.surfaces  = {}
         if gui ~= nil then
             pcall(function()
                 gui:Destroy()
             end)
         end
         if blur ~= nil then
-            pcall(function()
-                blur:Destroy()
-            end)
+            if ownedBlur then
+                pcall(function()
+                    blur:Destroy()
+                end)
+            else
+                pcall(function()
+                    blur.Enabled = wasEnabled                                          -- borrowed, so hand it back as found
+                end)
+            end
         end
     end
 
