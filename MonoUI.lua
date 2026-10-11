@@ -1,4 +1,4 @@
--- Latest update: 10/11/2026 3:16 PM
+-- Latest update: 10/11/2026 3:21 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
