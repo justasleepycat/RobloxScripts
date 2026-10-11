@@ -1,4 +1,4 @@
--- Latest update: 10/11/2026 3:21 PM
+-- Latest update: 10/11/2026 4:43 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -55,6 +55,8 @@ local Theme = {
     Line         = Color3.fromRGB(58, 58, 58),                                       -- strokes
     Outline      = Color3.fromRGB(104, 104, 104),                                    -- window outline
     Invert       = Color3.fromRGB(14, 14, 14),                                       -- text on a white pill
+    Car          = Color3.fromRGB(58, 78, 104),                                      -- tint for a player who is sitting in a car
+    CarHover     = Color3.fromRGB(74, 98, 128),                                      -- and its hover
     WindowAlpha  = 0.12,                                                             -- window plate opacity
     PanelAlpha   = 0.30,                                                             -- inner cards opacity
     RowAlpha     = 0.15,                                                             -- buttons / wells opacity
@@ -229,7 +231,10 @@ Motion.Specs = {
 }
 
 local channels = {}
-local motionOn = true
+
+-- Public, so a script that owns its own layout can honour its own motion setting: the window
+-- creator sets this from its settings, and anything can turn motion off and keep the feedback.
+Motion.Enabled = true
 
 local function Tweener()
     local ok, service = pcall(function()
@@ -256,7 +261,7 @@ function Motion.Play(instance, channel, properties)
         return nil
     end
 
-    local service = motionOn and Tweener() or nil
+    local service = Motion.Enabled ~= false and Tweener() or nil
     local spec    = Motion.Specs[channel] or Motion.Specs.Hover
     if service == nil or service.Create == nil then
         Snap(instance, properties)
@@ -284,6 +289,21 @@ function Motion.Play(instance, channel, properties)
         tween:Play()
     end)
     return tween
+end
+
+function Motion.Cancel(instance)
+    local open = channels[instance]
+    if open == nil then
+        return false
+    end
+
+    for _, tween in pairs(open) do
+        pcall(function()
+            tween:Cancel()
+        end)
+    end
+    channels[instance] = nil
+    return true
 end
 
 function Motion.Destroy()
@@ -607,7 +627,9 @@ local function Select(properties)
 end
 
 -- The box on its own. SubmitOnEnter keeps the ArrayField meaning: with it on the Callback
--- fires when Enter is pressed, with it off on every keystroke.
+-- fires when Enter is pressed, with it off on every keystroke. Text is the value the box starts
+-- with, so a field can be born holding its default instead of needing a write after creation;
+-- CurrentValue is the same thing under the name ArrayField gave it.
 local function Input(properties)
     local box = Sticker(Element {
         ClassName         = "TextBox",
@@ -616,11 +638,11 @@ local function Input(properties)
         Size              = properties.Size or UDim2.new(0, properties.Width or 50, 0, 26),
         Position          = properties.Position,
         ClearTextOnFocus  = false,
-        Text              = "",
+        Text              = properties.Text or properties.CurrentValue or "",
         TextSize          = Theme.Type.Body,
         TextColor3        = Theme.Text,
         TextXAlignment    = properties.X or Enum.TextXAlignment.Center,
-        PlaceholderText   = properties.PlaceholderText or "0",
+        PlaceholderText   = properties.PlaceholderText or properties.Hint or "0",
         PlaceholderColor3 = Theme.Muted,
         LayoutOrder       = properties.Order or 1,
         ZIndex            = properties.ZIndex or 2,
@@ -676,15 +698,7 @@ local function Input(properties)
         end)
     end
 
-    return {
-        Frame = box,
-        Set   = function(value)
-            box.Text = tostring(value)
-        end,
-        Get   = function()
-            return box.Text
-        end,
-    }
+    return box
 end
 
 local function Button(properties)
@@ -911,7 +925,7 @@ local function CreateRegion(frame)
             ZIndex   = 3,
         })
 
-        local element = Input {
+        local box = Input {
             Parent           = row,
             Name             = settings.Name,
             Order            = 1,
@@ -924,19 +938,21 @@ local function CreateRegion(frame)
             RemoveTextAfterFocusLost = settings.RemoveTextAfterFocusLost,
             OnSubmit         = settings.Callback,
         }
-        element.Frame.AnchorPoint = Vector2.new(1, 0.5)
+        box.AnchorPoint = Vector2.new(1, 0.5)
 
         RegisterFlag(settings.Flag, {
             Type = "Input",
-            Get  = element.Get,
+            Get  = function()
+                return box.Text
+            end,
             Set  = function(value)
-                element.Set(value)
+                box.Text = tostring(value)
                 if settings.Callback then
                     settings.Callback(value)
                 end
             end,
         })
-        return element
+        return box
     end
 
     function region:CreateButton(settings)
@@ -1020,6 +1036,17 @@ local function StepRain(deltaTime)
         return
     end
 
+    -- The layer is built before the layout has run, so its width may still be the 1920 default when
+    -- the streaks are seeded. The first step that knows the real width re-seeds inside it: without
+    -- this, a hand-built 720-wide window only ever sees a third of the rain, the rest falling outside.
+    if App.seededWidth ~= size.X then
+        App.seededWidth = size.X
+        for _, streak in ipairs(App.streaks) do
+            streak.X = math.random() * size.X
+            streak.Y = math.random() * size.Y
+        end
+    end
+
     -- The rain falls on its own path and the warp only decides where each streak is drawn, so the
     -- cursor bends the space the rain flows through rather than throwing streaks about. Displacement
     -- is a pure function of distance - strongest under the cursor, nothing at the rim - which is what
@@ -1088,7 +1115,7 @@ local function EnsureRain(settings)
 
     local layer = Element {
         ClassName              = "Frame",
-        Parent                 = App.gui,
+        Parent                 = settings.RainParent or App.gui,                      -- a hand-built window owns its own rain
         Name                   = "Rain",
         BackgroundTransparency = 1,
         Size                   = UDim2.new(1, 0, 1, 0),
@@ -1573,5 +1600,29 @@ MonoUI.Input     = Input
 MonoUI.Button    = Button
 MonoUI.Heading   = Heading
 MonoUI.CreateRegion = CreateRegion
+
+-- A surface is any frame that wants the shared backdrop while it is on screen: the blur for the game
+-- behind it, and the rain inside it. Windows and plates made here register themselves; these two are
+-- for a window built by hand, such as Stretcher's, so it can have the same backdrop without adopting
+-- the whole window object. The rain layer is built inside the frame given as RainParent, so it covers
+-- that window rather than the whole screen.
+function MonoUI:ShowSurface(frame, settings)
+    if frame == nil then
+        return nil
+    end
+
+    local wanted = settings or {}
+    wanted.RainParent = wanted.RainParent or frame
+    return RegisterSurface(frame, wanted)
+end
+
+function MonoUI:HideSurface(frame)
+    if frame == nil then
+        return nil
+    end
+
+    UnregisterSurface(frame)
+    return frame
+end
 
 return MonoUI

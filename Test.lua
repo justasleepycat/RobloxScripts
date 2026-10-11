@@ -1,7 +1,7 @@
 local RunService = game:GetService("RunService")
 local success, ret = pcall(function()
-    -- local targetName    = "Hak7Mod"
-    -- local target        = game.Players:FindFirstChild(targetName).Character
+    local targetName    = "Hak7Mod"
+    local target        = game.Players:FindFirstChild(targetName).Character
 
     local function GetStretcherTool()
         return game.Players.LocalPlayer.Character.Stretcher
@@ -148,31 +148,18 @@ local success, ret = pcall(function()
     local cachedPivots = {}
     local ownedVehicle = GetLocalVehicle()
 
-    for i, instance in ownedVehicle:GetDescendants() do
-        pcall(function()
-            if instance:GetPivot() then
-                cachedPivots[instance] = instance:GetPivot()
+    pcall(function()
+        for i = 1, 500 do task.wait()
+            if ownedVehicle.Body.PrimaryPart.ReceiveAge ~= 0 then
+                print("No network ownership")
+                break
             end
-        end)
-    end
 
-    task.wait(5)
-
-    for i, instance in pairs(ownedVehicle:GetDescendants()) do
-        pcall(function()
-            instance.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            if cachedPivots[instance] then
-                instance:PivotTo(cachedPivots[instance] + Vector3.new(0, 5, 0))
-            end
-        end)
-    end
+            ownedVehicle:PivotTo(target:GetPivot())
+        end
+    end)
 end)
 
 if not success then
     rconsoleprint(ret)
 end
-
-local conn; conn = game:GetService("RunService"):BindToRenderStep("goon", 0, function()
-    print("e")
-    game:GetService("RunService"):UnbindFromRenderStep("goon")
-end)
