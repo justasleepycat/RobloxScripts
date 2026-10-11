@@ -1,4 +1,4 @@
--- Latest update: 10/11/2026 3:00 PM
+-- Latest update: 10/11/2026 3:13 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -68,16 +68,15 @@ local Theme = {
     VisibleRows  = 5,                                                                -- options shown before a dropdown scrolls
     Rain         = {                                                                 -- streaks behind the window while it is up
         Enabled = true,
-        Count   = 110,
+        Count   = 180,
         Tint    = "Muted",
         Width   = 3,
         Length  = { 12, 34 },                                                        -- { min, max } pixels tall
         Speed   = { 340, 660 },                                                      -- { min, max } pixels per second
         Alpha   = { 0.30, 0.60 },                                                    -- { min, max } transparency
-        Push    = {                                                                  -- the cursor shoves streaks near it
-            Radius = 130,                                                            -- pixels around the mouse: a streak crosses this in ~0.5s
-            Force  = 6000,                                                           -- pixels per second squared at the centre
-            Drag   = 3,                                                              -- how fast a shoved streak settles back into falling
+        Warp    = {                                                                  -- the cursor bends the space the rain falls through
+            Radius   = 220,                                                          -- pixels of space that bend: a cursor-sized well, not a pinprick
+            Strength = 195,                                                          -- how far a streak at the very centre is displaced
         },
     },
 }
@@ -1021,55 +1020,37 @@ local function StepRain(deltaTime)
         return
     end
 
-    -- One mouse read per frame, already in the layer's own space, because the cursor shoves any
-    -- streak whose centre falls inside its radius: hardest at the centre, fading to nothing at the
-    -- rim, and applied as an impulse so the result is movement rather than teleporting.
-    local push   = Theme.Rain.Push or {}
-    local radius = push.Radius or 0
-    local force  = push.Force or 0
-    local drag   = push.Drag or 1
-    local mouse  = UserInput:GetMouseLocation() - layer.AbsolutePosition
+    -- The rain falls on its own path and the warp only decides where each streak is drawn, so the
+    -- cursor bends the space the rain flows through rather than throwing streaks about. Displacement
+    -- is a pure function of distance - strongest under the cursor, nothing at the rim - which is what
+    -- lets a streak enter or leave the field without jumping.
+    local warp     = Theme.Rain.Warp or {}
+    local radius   = warp.Radius or 0
+    local strength = warp.Strength or 0
+    local mouse    = UserInput:GetMouseLocation() - layer.AbsolutePosition
 
     for _, streak in ipairs(App.streaks) do
-        local offsetX  = streak.X - mouse.X
-        local offsetY  = (streak.Y + streak.Length / 2) - mouse.Y
-        local distance = math.sqrt(offsetX * offsetX + offsetY * offsetY)
-
-        if radius > 0 and distance > 0 and distance < radius then
-            local impulse = force * (1 - distance / radius) * deltaTime
-            streak.VX = streak.VX + (offsetX / distance) * impulse
-            streak.VY = streak.VY + (offsetY / distance) * impulse
-        end
-
-        -- Settling is what makes it read as a shove rather than a throw: sideways motion bleeds off
-        -- and the fall speed eases back to the streak's own terminal speed.
-        local settle = math.clamp(drag * deltaTime, 0, 1)
-        streak.VX = streak.VX * (1 - settle)
-        streak.VY = streak.VY + (streak.Speed - streak.VY) * settle
-
-        streak.X = streak.X + streak.VX * deltaTime
-        streak.Y = streak.Y + streak.VY * deltaTime
-
+        streak.Y = streak.Y + streak.Speed * deltaTime
         if streak.Y > size.Y then
             streak.Y     = -streak.Length                                                -- back above the top, new column
             streak.X     = math.random() * size.X
-            streak.VX    = 0
-            streak.VY    = streak.Speed
             streak.Speed = Between(Theme.Rain.Speed)
-        elseif streak.Y < -streak.Length * 4 then
-            streak.Y = size.Y                                                            -- shoved off the top: rejoin from below
         end
 
-        if streak.X < -streak.Length then
-            streak.X  = size.X
-            streak.VX = 0
-        elseif streak.X > size.X + streak.Length then
-            streak.X  = 0
-            streak.VX = 0
+        local offsetX  = streak.X - mouse.X
+        local offsetY  = (streak.Y + streak.Length / 2) - mouse.Y
+        local distance = math.sqrt(offsetX * offsetX + offsetY * offsetY)
+        local drawX    = streak.X
+        local drawY    = streak.Y
+
+        if radius > 0 and distance > 0 and distance < radius then
+            local ratio = distance / radius
+            local bulge = strength * (1 - ratio * ratio)^2                                -- a lens: no displacement, and no crease, at the rim
+            drawX = streak.X + (offsetX / distance) * bulge
+            drawY = streak.Y + (offsetY / distance) * bulge
         end
 
-        streak.Frame.Position = UDim2.fromOffset(streak.X, streak.Y)
-        streak.Frame.Rotation = math.deg(math.atan(streak.VX, streak.VY))                -- leans along its own motion: vertical falling, slanted when shoved
+        streak.Frame.Position = UDim2.fromOffset(drawX, drawY)
     end
 end
 
@@ -1142,8 +1123,6 @@ local function EnsureRain(settings)
             Frame  = streak,
             X      = x,
             Y      = y,
-            VX     = 0,                                                                  -- the cursor's shove, bled off by the settle
-            VY     = speed,
             Length = length,
             Speed  = speed,
         }
