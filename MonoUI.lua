@@ -1159,6 +1159,11 @@ local function EnsureRain(settings)
     return layer
 end
 
+-- What each surface asked for, kept beside the list rather than on the surface itself: a surface may
+-- be a plain Frame - a window built by hand, like Stretcher's - and an instance rejects an unknown
+-- field ("wantsBlur is not a valid member of Frame"), which took the whole registration down with it.
+local surfaceWants = {}
+
 -- Blur and rain follow the surfaces that are on screen: only visible ones are registered, so a
 -- hidden window cannot switch off the effects a plate is still using. The decision itself lives in
 -- one place because the blur is one shared effect for the whole app, which is why hiding the last
@@ -1168,8 +1173,9 @@ local function SyncEffects()
     local wantRain = false
 
     for _, surface in ipairs(App.surfaces) do
-        if surface.wantsBlur then wantBlur = true end
-        if surface.wantsRain then wantRain = true end
+        local wanted = surfaceWants[surface]
+        if wanted ~= nil and wanted.blur then wantBlur = true end
+        if wanted ~= nil and wanted.rain then wantRain = true end
     end
 
     if App.blur ~= nil and App.blur.Parent ~= nil then
@@ -1186,8 +1192,10 @@ end
 -- Windows and plates register while they are visible and unregister when hidden, so this list is
 -- a list of what is actually on screen.
 local function RegisterSurface(surface, settings)
-    surface.wantsBlur = EnsureBlur(settings) ~= nil
-    surface.wantsRain = EnsureRain(settings) ~= nil
+    surfaceWants[surface] = {
+        blur = EnsureBlur(settings) ~= nil,
+        rain = EnsureRain(settings) ~= nil,
+    }
     if table.find(App.surfaces, surface) == nil then
         App.surfaces[#App.surfaces + 1] = surface
     end
@@ -1200,6 +1208,7 @@ local function UnregisterSurface(surface)
     if index ~= nil then
         table.remove(App.surfaces, index)
     end
+    surfaceWants[surface] = nil
     SyncEffects()
 end
 
@@ -1543,6 +1552,7 @@ function MonoUI:CreateWindow(settings)
 
         UnregisterSurface(window)
         StopRain()
+        table.clear(surfaceWants)
 
         App.gui      = nil
         App.blur     = nil
