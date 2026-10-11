@@ -735,6 +735,25 @@ local function Heading(parent, order, text)
     return { Frame = header, Set = function() end, Get = function() return text end }
 end
 
+--=== flags =================================================================
+
+MonoUI.Flags = {}
+
+-- Registering with no Flag is normal - the named elements all accept one, none require it -
+-- so the guard here is what keeps a flagless element from indexing the table with nil.
+local function RegisterFlag(flag, entry)
+    if flag == nil then return end
+    MonoUI.Flags[flag] = entry
+end
+
+local Settings = { Enabled = false, FileName = "MonoUI" }
+
+-- The file lives in the executor's own workspace folder, next to every other script's
+-- configuration, and is plain flag -> value JSON so a saved file stays readable.
+local function ConfigurationPath()
+    return Settings.FileName .. ".json"
+end
+
 --=== regions ===============================================================
 
 -- A region is a body: a vertical list of rows with its own ordering, which is what both a
@@ -876,67 +895,6 @@ local function CreateRegion(frame)
     end
 
     return region
-end
-
---=== flags =================================================================
-
-MonoUI.Flags = {}
-
--- Registering with no Flag is normal - the named elements all accept one, none require it -
--- so the guard here is what keeps a flagless element from indexing the table with nil.
-local function RegisterFlag(flag, entry)
-    if flag == nil then return end
-    MonoUI.Flags[flag] = entry
-end
-
-local Settings = { Enabled = false, FileName = "MonoUI" }
-
--- The file lives in the executor's own workspace folder, next to every other script's
--- configuration, and is plain flag -> value JSON so a saved file stays readable.
-local function ConfigurationPath()
-    return Settings.FileName .. ".json"
-end
-
-function MonoUI:SaveConfiguration()
-    if not Settings.Enabled then return end
-
-    local data = {}
-    for flag, entry in pairs(MonoUI.Flags) do
-        data[flag] = entry.Get()
-    end
-
-    local ok, encoded = pcall(function()
-        return HttpService:JSONEncode(data)
-    end)
-    if not ok then return end
-
-    pcall(function()
-        writefile(ConfigurationPath(), encoded)
-    end)
-end
-
-function MonoUI:LoadConfiguration()
-    if not Settings.Enabled then return end
-
-    local ok, contents = pcall(function()
-        if type(isfile) == "function" and not isfile(ConfigurationPath()) then
-            return nil
-        end
-        return readfile(ConfigurationPath())
-    end)
-    if not ok or contents == nil then return end
-
-    local decoded, data = pcall(function()
-        return HttpService:JSONDecode(contents)
-    end)
-    if not decoded or type(data) ~= "table" then return end
-
-    for flag, value in pairs(data) do
-        local entry = MonoUI.Flags[flag]
-        if entry ~= nil then
-            entry.Set(value)                                                            -- through the element, so its Callback runs
-        end
-    end
 end
 
 function MonoUI:GetFlag(flag)
