@@ -1,4 +1,4 @@
--- Latest update: 10/11/2026 2:53 PM
+-- Latest update: 10/11/2026 2:57 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -68,12 +68,12 @@ local Theme = {
     VisibleRows  = 5,                                                                -- options shown before a dropdown scrolls
     Rain         = {                                                                 -- streaks behind the window while it is up
         Enabled = true,
-        Count   = 90,
+        Count   = 110,
         Tint    = "Muted",
-        Width   = 2,
-        Length  = { 10, 28 },                                                        -- { min, max } pixels tall
-        Speed   = { 320, 620 },                                                      -- { min, max } pixels per second
-        Alpha   = { 0.55, 0.85 },                                                    -- { min, max } transparency
+        Width   = 3,
+        Length  = { 12, 34 },                                                        -- { min, max } pixels tall
+        Speed   = { 340, 660 },                                                      -- { min, max } pixels per second
+        Alpha   = { 0.30, 0.60 },                                                    -- { min, max } transparency
     },
 }
 
@@ -1078,6 +1078,8 @@ local function EnsureRain(settings)
     App.streaks = {}
     for index = 1, rain.Count do
         local length = Between(rain.Length)
+        local x      = math.random() * width
+        local y      = math.random() * height
         local streak = Element {
             ClassName              = "Frame",
             Parent                 = layer,
@@ -1085,13 +1087,14 @@ local function EnsureRain(settings)
             BackgroundColor3       = Theme[rain.Tint or "Muted"],
             BackgroundTransparency = Between(rain.Alpha),
             BorderSizePixel        = 0,
+            Position               = UDim2.fromOffset(x, y),                             -- in place from the first frame, not piled at (0, 0)
             Size                   = UDim2.fromOffset(rain.Width or 2, length),
             ZIndex                 = 0,
         }
         App.streaks[index] = {
             Frame  = streak,
-            X      = math.random() * width,
-            Y      = math.random() * height,
+            X      = x,
+            Y      = y,
             Length = length,
             Speed  = Between(rain.Speed),
         }
