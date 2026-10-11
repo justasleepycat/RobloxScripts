@@ -1,4 +1,4 @@
--- Latest update: 10/11/2026 2:50 PM
+-- Latest update: 10/11/2026 2:53 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -1101,18 +1101,17 @@ local function EnsureRain(settings)
     return layer
 end
 
--- Blur and rain both follow the surfaces that asked for them: with every window hidden there is
--- nothing to blur and nothing to fall, so both stop rather than keep running behind a UI nobody
--- can see.
+-- Blur and rain follow the surfaces that are on screen: only visible ones are registered, so a
+-- hidden window cannot switch off the effects a plate is still using. The decision itself lives in
+-- one place because the blur is one shared effect for the whole app, which is why hiding the last
+-- surface stops both instead of each effect deciding for itself.
 local function SyncEffects()
     local wantBlur = false
     local wantRain = false
 
     for _, surface in ipairs(App.surfaces) do
-        if surface.visible then
-            if surface.wantsBlur then wantBlur = true end
-            if surface.wantsRain then wantRain = true end
-        end
+        if surface.wantsBlur then wantBlur = true end
+        if surface.wantsRain then wantRain = true end
     end
 
     if App.blur ~= nil and App.blur.Parent ~= nil then
@@ -1126,12 +1125,14 @@ local function SyncEffects()
     end
 end
 
--- Windows and plates both register here, so SyncEffects has one list to read.
+-- Windows and plates register while they are visible and unregister when hidden, so this list is
+-- a list of what is actually on screen.
 local function RegisterSurface(surface, settings)
     surface.wantsBlur = EnsureBlur(settings) ~= nil
     surface.wantsRain = EnsureRain(settings) ~= nil
-    surface.visible   = surface.visible and true or false
-    App.surfaces[#App.surfaces + 1] = surface
+    if table.find(App.surfaces, surface) == nil then
+        App.surfaces[#App.surfaces + 1] = surface
+    end
     SyncEffects()
     return surface
 end
@@ -1273,7 +1274,12 @@ function MonoUI:CreatePlate(settings)
     function object:SetVisible(visible)
         object.visible = visible and true or false
         plate.Visible  = object.visible
-        SyncEffects()
+
+        if object.visible then
+            RegisterSurface(object, settings)
+        else
+            UnregisterSurface(object)
+        end
         return object.visible
     end
 
@@ -1311,7 +1317,6 @@ function MonoUI:CreateWindow(settings)
         visible = not settings.StartHidden,
     }
     App.windows[#App.windows + 1] = window
-    RegisterSurface(window, settings)
 
     local plate, bar, hint, status = CreatePlateFrame(settings, #App.windows)
     window.plate = plate
@@ -1382,10 +1387,15 @@ function MonoUI:CreateWindow(settings)
     end
 
     function window:SetVisible(visible)
-        window.visible    = visible and true or false
-        plate.Visible     = window.visible
-        chip.Visible      = not window.visible
-        SyncEffects()
+        window.visible = visible and true or false
+        plate.Visible  = window.visible
+        chip.Visible   = not window.visible
+
+        if window.visible then
+            RegisterSurface(window, settings)
+        else
+            UnregisterSurface(window)
+        end
         return window.visible
     end
 
