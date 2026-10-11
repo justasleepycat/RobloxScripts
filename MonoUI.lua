@@ -1,4 +1,4 @@
--- Latest update: 10/11/2026 2:48 PM
+-- Latest update: 10/11/2026 2:50 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -37,6 +37,7 @@ local Lighting    = game:GetService("Lighting")
 local UserInput   = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local Workspace   = game:GetService("Workspace")
+local RunService  = game:GetService("RunService")
 
 local MonoUI = {}
 MonoUI.Debug = false
@@ -65,6 +66,15 @@ local Theme = {
     Width        = 720,                                                              -- default plate width
     Blur         = 12,                                                               -- backdrop blur, 0 for none
     VisibleRows  = 5,                                                                -- options shown before a dropdown scrolls
+    Rain         = {                                                                 -- streaks behind the window while it is up
+        Enabled = true,
+        Count   = 90,
+        Tint    = "Muted",
+        Width   = 2,
+        Length  = { 10, 28 },                                                        -- { min, max } pixels tall
+        Speed   = { 320, 620 },                                                      -- { min, max } pixels per second
+        Alpha   = { 0.55, 0.85 },                                                    -- { min, max } transparency
+    },
 }
 
 --=== reporting =============================================================
@@ -950,7 +960,7 @@ end
 
 --=== app ===================================================================
 
-local App = { gui = nil, blur = nil, blurOwned = false, blurWasEnabled = true, connections = {}, windows = {}, plates = {}, surfaces = {} }
+local App = { gui = nil, blur = nil, rain = nil, rainConnection = nil, streaks = {}, connections = {}, windows = {}, plates = {}, surfaces = {} }
 
 local function EnsureGui(name)
     if App.gui ~= nil and App.gui.Parent ~= nil then
@@ -977,9 +987,9 @@ local function EnsureBlur(settings)
         return App.blur
     end
 
+    -- The effect is named for this library, so one left over from an earlier run is ours to take
+    -- over and ours to remove again; there is no foreign blur to be careful about.
     local existing = Lighting:FindFirstChild("MonoUIBlur")
-    App.blurOwned = existing == nil                                                             -- only ever remove what this made
-    App.blurWasEnabled = existing == nil or existing.Enabled                                    -- and put back what was found
     App.blur = existing or Element {
         ClassName = "BlurEffect",
         Parent    = Lighting,
@@ -989,29 +999,140 @@ local function EnsureBlur(settings)
     return App.blur
 end
 
--- The blur follows the surfaces that asked for it: with every window hidden there is nothing to
--- blur, so it gets switched off instead of softening the whole game behind a UI nobody can see.
-local function SyncBlur()
-    if App.blur == nil or App.blur.Parent == nil then
+-- Rain: a layer of streaks behind the window, inside the same gui at ZIndex 0 while the plate sits
+-- at 1, so it reads as the window's own background rather than as something laid over the game.
+local function Between(range)
+    return range[1] + math.random() * (range[2] - range[1])
+end
+
+local function StepRain(deltaTime)
+    local layer = App.rain
+    if layer == nil then
         return
     end
 
-    local wanted = false
-    for _, surface in ipairs(App.surfaces) do
-        if surface.visible and surface.wantsBlur then
-            wanted = true
-            break
-        end
+    local size = layer.AbsoluteSize
+    if size.Y <= 0 then
+        return
     end
-    App.blur.Enabled = wanted
+
+    for _, streak in ipairs(App.streaks) do
+        streak.Y = streak.Y + streak.Speed * deltaTime
+        if streak.Y > size.Y then
+            streak.Y     = -streak.Length                                                -- back above the top, new column
+            streak.X     = math.random() * size.X
+            streak.Speed = Between(Theme.Rain.Speed)
+        end
+        streak.Frame.Position = UDim2.fromOffset(streak.X, streak.Y)
+    end
 end
 
--- Windows and plates both register here, so SyncBlur has one list to read.
+local function StartRain()
+    if App.rain == nil then
+        return
+    end
+
+    App.rain.Visible = true
+    if App.rainConnection == nil then
+        App.rainConnection = RunService.RenderStepped:Connect(StepRain)
+    end
+end
+
+local function StopRain()
+    if App.rainConnection ~= nil then
+        pcall(function()
+            App.rainConnection:Disconnect()                                              -- hidden means nothing steps
+        end)
+        App.rainConnection = nil
+    end
+    if App.rain ~= nil then
+        App.rain.Visible = false
+    end
+end
+
+local function EnsureRain(settings)
+    local rain = Theme.Rain
+    if settings.Rain == false or rain == nil or rain.Enabled == false or (rain.Count or 0) <= 0 then
+        return nil
+    end
+    if App.rain ~= nil and App.rain.Parent ~= nil then
+        return App.rain
+    end
+
+    local layer = Element {
+        ClassName              = "Frame",
+        Parent                 = App.gui,
+        Name                   = "Rain",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 1, 0),
+        Visible                = false,
+        ZIndex                 = 0,
+    }
+
+    -- Seeded across the viewport so the first frame already looks like rain rather than a burst
+    -- starting on one line; the layout has been computed by the time a surface registers.
+    local size   = layer.AbsoluteSize
+    local width  = size.X > 0 and size.X or 1920
+    local height = size.Y > 0 and size.Y or 1080
+
+    App.streaks = {}
+    for index = 1, rain.Count do
+        local length = Between(rain.Length)
+        local streak = Element {
+            ClassName              = "Frame",
+            Parent                 = layer,
+            Name                   = "Streak" .. index,
+            BackgroundColor3       = Theme[rain.Tint or "Muted"],
+            BackgroundTransparency = Between(rain.Alpha),
+            BorderSizePixel        = 0,
+            Size                   = UDim2.fromOffset(rain.Width or 2, length),
+            ZIndex                 = 0,
+        }
+        App.streaks[index] = {
+            Frame  = streak,
+            X      = math.random() * width,
+            Y      = math.random() * height,
+            Length = length,
+            Speed  = Between(rain.Speed),
+        }
+    end
+
+    App.rain = layer
+    return layer
+end
+
+-- Blur and rain both follow the surfaces that asked for them: with every window hidden there is
+-- nothing to blur and nothing to fall, so both stop rather than keep running behind a UI nobody
+-- can see.
+local function SyncEffects()
+    local wantBlur = false
+    local wantRain = false
+
+    for _, surface in ipairs(App.surfaces) do
+        if surface.visible then
+            if surface.wantsBlur then wantBlur = true end
+            if surface.wantsRain then wantRain = true end
+        end
+    end
+
+    if App.blur ~= nil and App.blur.Parent ~= nil then
+        App.blur.Enabled = wantBlur
+    end
+
+    if App.rain ~= nil and wantRain then
+        StartRain()
+    else
+        StopRain()
+    end
+end
+
+-- Windows and plates both register here, so SyncEffects has one list to read.
 local function RegisterSurface(surface, settings)
     surface.wantsBlur = EnsureBlur(settings) ~= nil
+    surface.wantsRain = EnsureRain(settings) ~= nil
     surface.visible   = surface.visible and true or false
     App.surfaces[#App.surfaces + 1] = surface
-    SyncBlur()
+    SyncEffects()
     return surface
 end
 
@@ -1020,7 +1141,7 @@ local function UnregisterSurface(surface)
     if index ~= nil then
         table.remove(App.surfaces, index)
     end
-    SyncBlur()
+    SyncEffects()
 end
 
 -- One plate: the window surface itself, with the title bar, the hint line and the drag.
@@ -1152,7 +1273,7 @@ function MonoUI:CreatePlate(settings)
     function object:SetVisible(visible)
         object.visible = visible and true or false
         plate.Visible  = object.visible
-        SyncBlur()
+        SyncEffects()
         return object.visible
     end
 
@@ -1264,7 +1385,7 @@ function MonoUI:CreateWindow(settings)
         window.visible    = visible and true or false
         plate.Visible     = window.visible
         chip.Visible      = not window.visible
-        SyncBlur()
+        SyncEffects()
         return window.visible
     end
 
@@ -1349,34 +1470,28 @@ function MonoUI:CreateWindow(settings)
         end
 
         -- every plate lives in the one gui, so the app goes together
-        local gui        = App.gui
-        local blur       = App.blur
-        local ownedBlur  = App.blurOwned
-        local wasEnabled = App.blurWasEnabled
+        local gui  = App.gui
+        local blur = App.blur
 
         UnregisterSurface(window)
+        StopRain()
 
-        App.gui       = nil
-        App.blur      = nil
-        App.blurOwned = false
-        App.windows   = {}
-        App.plates    = {}
-        App.surfaces  = {}
+        App.gui      = nil
+        App.blur     = nil
+        App.rain     = nil
+        App.streaks  = {}
+        App.windows  = {}
+        App.plates   = {}
+        App.surfaces = {}
         if gui ~= nil then
             pcall(function()
                 gui:Destroy()
             end)
         end
         if blur ~= nil then
-            if ownedBlur then
-                pcall(function()
-                    blur:Destroy()
-                end)
-            else
-                pcall(function()
-                    blur.Enabled = wasEnabled                                          -- borrowed, so hand it back as found
-                end)
-            end
+            pcall(function()
+                blur:Destroy()                                                              -- named for this library, so it goes with it
+            end)
         end
     end
 
