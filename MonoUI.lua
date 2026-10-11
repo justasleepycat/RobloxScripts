@@ -754,6 +754,56 @@ local function ConfigurationPath()
     return Settings.FileName .. ".json"
 end
 
+-- Saving and loading live next to the path they use. Loading applies each value through its
+-- element, so the element's own Callback runs exactly as if the control had been clicked.
+function MonoUI:SaveConfiguration()
+    if not Settings.Enabled then return end
+
+    local data = {}
+    for flag, entry in pairs(MonoUI.Flags) do
+        data[flag] = entry.Get()
+    end
+
+    local ok, encoded = pcall(function()
+        return HttpService:JSONEncode(data)
+    end)
+    if not ok then return end
+
+    pcall(function()
+        writefile(ConfigurationPath(), encoded)
+    end)
+end
+
+function MonoUI:LoadConfiguration()
+    if not Settings.Enabled then return end
+
+    local ok, contents = pcall(function()
+        if type(isfile) == "function" and not isfile(ConfigurationPath()) then
+            return nil
+        end
+        return readfile(ConfigurationPath())
+    end)
+    if not ok or contents == nil then return end
+
+    local decoded, data = pcall(function()
+        return HttpService:JSONDecode(contents)
+    end)
+    if not decoded or type(data) ~= "table" then return end
+
+    for flag, value in pairs(data) do
+        local entry = MonoUI.Flags[flag]
+        if entry ~= nil then
+            entry.Set(value)                                                            -- through the element, so its Callback runs
+        end
+    end
+end
+
+function MonoUI:GetFlag(flag)
+    local entry = MonoUI.Flags[flag]
+    if entry == nil then return nil end
+    return entry.Get()
+end
+
 --=== regions ===============================================================
 
 -- A region is a body: a vertical list of rows with its own ordering, which is what both a
@@ -895,12 +945,6 @@ local function CreateRegion(frame)
     end
 
     return region
-end
-
-function MonoUI:GetFlag(flag)
-    local entry = MonoUI.Flags[flag]
-    if entry == nil then return nil end
-    return entry.Get()
 end
 
 --=== app ===================================================================
