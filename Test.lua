@@ -163,3 +163,16 @@ end)
 if not success then
     rconsoleprint(ret)
 end
+
+local camera        = game.Workspace.CurrentCamera
+local oldSubject    = camera.CameraSubject
+local testPart      = Instance.new("Part")
+
+testPart.Anchored   = true
+testPart.Parent     = game.Workspace
+testPart.Anchored   = true
+
+camera.CameraSubject = testPart
+task.wait(5)
+camera.CameraSubject = oldSubject
+testPart:Destroy()
