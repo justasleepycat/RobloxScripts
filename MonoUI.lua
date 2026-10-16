@@ -1,11 +1,13 @@
--- Latest update: 10/11/2026 4:50 PM
+-- Latest update: 10/16/2026 11:44 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
-    Same palette, type scale, motion, spacing and gethui-first parenting as the window it
-    came from. Every layout capability that file uses is available here, so a script can be
-    laid out exactly the way Stretcher is - several independent plates, each with its own
-    title bar and drag - or use the higher-level tabs and elements:
+    Same type scale, motion, spacing and gethui-first parenting as the window it came from, laid
+    out the same way; the surface is a frosted glass plate rather than a flat grey one, built from
+    white tints over transparency, a sheen across the fill and a gradient rim. Every layout
+    capability that file uses is available here, so a script can be laid out exactly the way
+    Stretcher is - several independent plates, each with its own title bar and drag - or use the
+    higher-level tabs and elements:
 
     Hand-laid out, the way Stretcher does it:
         local Plate = MonoUI:CreatePlate { Name = "MY SWITCHES", Width = 248, Position = UDim2.fromOffset(812, 120), Hint = "RIGHT CONTROL TO HIDE" }
@@ -44,38 +46,49 @@ MonoUI.Debug = false
 
 --=== theme =================================================================
 
+-- The palette is white-on-transparent rather than gray-on-gray: the tints are the light the
+-- glass catches, and every *Alpha below is a BackgroundTransparency, so a higher value is a
+-- more see-through surface. The plate is the only layer the world is meant to show through.
 local Theme = {
-    Surface      = Color3.fromRGB(10, 10, 10),                                       -- window plate
-    Header       = Color3.fromRGB(17, 17, 17),                                       -- title bar
-    Row          = Color3.fromRGB(20, 20, 20),                                       -- inactive buttons
-    RowHover     = Color3.fromRGB(34, 34, 34),                                       -- hovered buttons
-    Well         = Color3.fromRGB(15, 15, 15),                                       -- inputs / selects
-    Text         = Color3.fromRGB(242, 242, 242),                                    -- primary text
-    Muted        = Color3.fromRGB(146, 146, 146),                                    -- secondary text
-    Line         = Color3.fromRGB(58, 58, 58),                                       -- strokes
-    Outline      = Color3.fromRGB(104, 104, 104),                                    -- window outline
-    Invert       = Color3.fromRGB(14, 14, 14),                                       -- text on a white pill
-    Car          = Color3.fromRGB(58, 78, 104),                                      -- tint for a player who is sitting in a car
-    CarHover     = Color3.fromRGB(74, 98, 128),                                      -- and its hover
-    WindowAlpha  = 0.12,                                                             -- window plate opacity
-    PanelAlpha   = 0.30,                                                             -- inner cards opacity
-    RowAlpha     = 0.15,                                                             -- buttons / wells opacity
-    OutlineAlpha = 0.30,                                                             -- outline transparency
-    Radius       = 12,                                                               -- window corner radius
-    RowRadius    = 8,                                                                -- inner corner radius
-    Space        = { Micro = 4, Gap = 8, Pad = 12, Section = 16, Block = 22 },        -- one spacing scale
+    Surface      = Color3.fromRGB(8, 8, 8),                                          -- window plate
+    Header       = Color3.fromRGB(255, 255, 255),                                    -- title bar, a white lift
+    Row          = Color3.fromRGB(255, 255, 255),                                    -- inactive buttons
+    RowHover     = Color3.fromRGB(255, 255, 255),                                    -- hovered buttons
+    Well         = Color3.fromRGB(0, 0, 0),                                          -- inputs / selects
+    Text         = Color3.fromRGB(250, 250, 250),                                    -- primary text
+    Muted        = Color3.fromRGB(160, 160, 160),                                    -- secondary text
+    Line         = Color3.fromRGB(255, 255, 255),                                    -- strokes
+    Outline      = Color3.fromRGB(255, 255, 255),                                    -- window outline
+    Invert       = Color3.fromRGB(10, 10, 10),                                       -- text on a white pill
+    Car          = Color3.fromRGB(70, 70, 70),                                       -- tint for a player who is sitting in a car
+    CarHover     = Color3.fromRGB(96, 96, 96),                                       -- and its hover
+    WindowAlpha  = 0.38,                                                             -- frosted plate, the blur shows through
+    PanelAlpha   = 0.90,                                                             -- title bar, white lift
+    RowAlpha     = 0.92,                                                             -- buttons, rest
+    HoverAlpha   = 0.84,                                                             -- buttons, hovered: denser fill, same tint
+    PressAlpha   = 0.74,                                                             -- and pressed, denser still
+    WellAlpha    = 0.55,                                                             -- inputs / selects are inset, so darker
+    MenuAlpha    = 0.18,                                                             -- dropdown must stay readable
+    LineAlpha    = 0.88,                                                             -- hairline strokes
+    FocusAlpha   = 0.45,                                                             -- the ring an input shows while focused
+    OutlineAlpha = 0.70,                                                             -- window outline
+    SwitchOnAlpha = 0.08,                                                            -- the white pill of a switch that is on
+    RevealScale  = 0.97,                                                             -- plate scale it grows from when it is shown
+    Radius       = 16,                                                               -- window corner radius
+    RowRadius    = 10,                                                               -- inner corner radius
+    Space        = { Micro = 4, Gap = 8, Pad = 14, Section = 16, Block = 22 },        -- one spacing scale
     Type         = { Title = 15, Heading = 11, Label = 13, Body = 12, Support = 9 },  -- named sizes
     Width        = 720,                                                              -- default plate width
-    Blur         = 12,                                                               -- backdrop blur, 0 for none
+    Blur         = 16,                                                               -- backdrop blur, 0 for none
     VisibleRows  = 5,                                                                -- options shown before a dropdown scrolls
     Rain         = {                                                                 -- streaks behind the window while it is up
         Enabled = true,
-        Count   = 3000,
+        Count   = 450,                                                               -- 3000 Frames moved every RenderStepped is the biggest cost in the file
         Tint    = "Muted",
         Width   = 1,
         Length  = { 6, 12 },                                                        -- { min, max } pixels tall
         Speed   = { 340, 660 },                                                      -- { min, max } pixels per second
-        Alpha   = { 0.30, 0.60 },                                                    -- { min, max } transparency
+        Alpha   = { 0.55, 0.85 },                                                    -- { min, max } transparency, quieter so it reads as texture behind glass
         Warp    = {                                                                  -- the cursor bends the space the rain falls through
             Radius   = 220,                                                          -- pixels of space that bend: a cursor-sized well, not a pinprick
             Strength = 195,                                                          -- how far a streak at the very centre is displaced
@@ -120,77 +133,117 @@ local function Element(properties)
     return instance
 end
 
--- Applies theme shorthands so every element stays on the same palette:
+-- The glass is built out of four layers rather than one flat frame: a fill whose tint comes from
+-- the palette, a sheen across it, a rim that is bright at the top-left and fades away, and a
+-- hairline stroke. Sticker hands out the whole set, and each piece below early-returns when its
+-- property is absent, so the shapes stay readable and a caller opts in per piece:
 --   Color = "Surface"  Corner = "RowRadius"  Stroke = "Line"
+--   Glass = true       -- top-to-bottom sheen across the fill
+--   Rim = true         -- bright top-left edge, fading toward the bottom-right
 --   Padding = { 10, 10, 10, 10 }             Gap = { Padding = 6, ... }
+
+-- The rim: brightest where a light would catch the top-left edge, fading off over the long sides
+-- and lifting again at the very corner, so the pane reads as a solid object with an edge.
+local RimTransparency = NumberSequence.new {
+    NumberSequenceKeypoint.new(0.00, 0.25),
+    NumberSequenceKeypoint.new(0.35, 0.75),
+    NumberSequenceKeypoint.new(0.70, 0.90),
+    NumberSequenceKeypoint.new(1.00, 0.55),
+}
+
+-- The fill is a little denser at the top than the bottom, which is what reads as a pane of glass
+-- lying under a light rather than a flat cutout.
+local SheenTransparency = NumberSequence.new {
+    NumberSequenceKeypoint.new(0, 0.00),
+    NumberSequenceKeypoint.new(1, 0.45),
+}
+
+-- 0.5 -> pill, 12 -> pixels, "RowRadius" -> that palette entry
+local function ResolveRadius(corner)
+    if type(corner) == "string" then return UDim.new(0, Theme[corner] or Theme.RowRadius) end
+    if type(corner) ~= "number" then return UDim.new(0, Theme.RowRadius) end
+    if corner < 1 then return UDim.new(corner, 0) end
+    return UDim.new(0, corner)
+end
+
+local function AddFill(instance, properties)
+    local color = Theme[properties.Color]
+    if color ~= nil then instance.BackgroundColor3 = color end
+    if properties.Alpha ~= nil then instance.BackgroundTransparency = properties.Alpha end
+end
+
+local function AddCorner(instance, corner)
+    if corner == nil then return end
+    Element { ClassName = "UICorner", Parent = instance, Name = "Corner", CornerRadius = ResolveRadius(corner) }
+end
+
+-- With Rim the stroke itself goes to full opacity and a gradient does the fading instead; without
+-- it the stroke is simply the flat hairline it always was.
+local function AddStroke(instance, properties)
+    if properties.Stroke == nil then return end
+
+    local hasRim = properties.Rim == true
+    local stroke = Element {
+        ClassName       = "UIStroke",
+        Parent          = instance,
+        Name            = "Stroke",
+        Color           = Theme[properties.Stroke] or Theme.Line,
+        Thickness       = properties.StrokeWidth or 1,
+        Transparency    = hasRim and 0 or (properties.StrokeAlpha or Theme.LineAlpha),
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }
+    if not hasRim then return end
+
+    Element { ClassName = "UIGradient", Parent = stroke, Name = "Rim", Rotation = 45, Transparency = RimTransparency }
+end
+
+-- A gradient modulates what it is parented to, so on a Frame it lightens the fill and on a
+-- TextBox it would also tint the text: controls that carry text keep the fill unglassed.
+local function AddSheen(instance, properties)
+    if not properties.Glass then return end
+    Element { ClassName = "UIGradient", Parent = instance, Name = "Sheen", Rotation = 90, Transparency = SheenTransparency }
+end
+
+local function AddPadding(instance, padding)
+    if padding == nil then return end
+    Element {
+        ClassName     = "UIPadding",
+        Parent        = instance,
+        Name          = "Padding",
+        PaddingTop    = UDim.new(0, padding[1] or 0),
+        PaddingRight  = UDim.new(0, padding[2] or 0),
+        PaddingBottom = UDim.new(0, padding[3] or 0),
+        PaddingLeft   = UDim.new(0, padding[4] or 0),
+    }
+end
+
+local function AddLayout(instance, gap)
+    if gap == nil then return end
+    Element {
+        ClassName           = "UIListLayout",
+        Parent              = instance,
+        Name                = "Layout",
+        FillDirection       = gap.Direction or Enum.FillDirection.Vertical,
+        HorizontalAlignment = gap.X or Enum.HorizontalAlignment.Center,
+        VerticalAlignment   = gap.Y or Enum.VerticalAlignment.Center,
+        SortOrder           = gap.Order or Enum.SortOrder.LayoutOrder,
+        Padding             = UDim.new(0, gap.Padding or 0),
+    }
+end
+
 local function Sticker(instance, properties)
     properties = properties or {}
-
-    local color   = properties.Color
-    local corner  = properties.Corner
-    local stroke  = properties.Stroke
-    local padding = properties.Padding
-    local gap     = properties.Gap
-
-    if color ~= nil and Theme[color] then
-        instance.BackgroundColor3 = Theme[color]
-    end
-    if properties.Alpha ~= nil then
-        instance.BackgroundTransparency = properties.Alpha
-    end
-    if corner ~= nil then
-        local radius = Theme.RowRadius
-        if type(corner) == "string" then
-            radius = UDim.new(0, Theme[corner] or Theme.RowRadius)                      -- palette key -> pixel radius
-        elseif type(corner) == "number" then
-            radius = corner < 1 and UDim.new(corner, 0) or UDim.new(0, corner)          -- 0.5 -> pill, 12 -> pixels
-        end
-        Element {
-            ClassName    = "UICorner",
-            Parent       = instance,
-            Name         = "Corner",
-            CornerRadius = radius,
-        }
-    end
-    if stroke ~= nil then
-        Element {
-            ClassName       = "UIStroke",
-            Parent          = instance,
-            Name            = "Stroke",
-            Color           = Theme[stroke] or Theme.Line,
-            Thickness       = properties.StrokeWidth or 1,
-            Transparency    = properties.StrokeAlpha or 0.35,
-            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-        }
-    end
-    if padding ~= nil then
-        Element {
-            ClassName     = "UIPadding",
-            Parent        = instance,
-            Name          = "Padding",
-            PaddingTop    = UDim.new(0, padding[1] or 0),
-            PaddingRight  = UDim.new(0, padding[2] or 0),
-            PaddingBottom = UDim.new(0, padding[3] or 0),
-            PaddingLeft   = UDim.new(0, padding[4] or 0),
-        }
-    end
-    if gap ~= nil then
-        Element {
-            ClassName           = "UIListLayout",
-            Parent              = instance,
-            Name                = "Layout",
-            FillDirection       = gap.Direction or Enum.FillDirection.Vertical,
-            HorizontalAlignment = gap.X or Enum.HorizontalAlignment.Center,
-            VerticalAlignment   = gap.Y or Enum.VerticalAlignment.Center,
-            SortOrder           = gap.Order or Enum.SortOrder.LayoutOrder,
-            Padding             = UDim.new(0, gap.Padding or 0),
-        }
-    end
+    AddFill(instance, properties)
+    AddCorner(instance, properties.Corner)
+    AddStroke(instance, properties)
+    AddSheen(instance, properties)
+    AddPadding(instance, properties.Padding)
+    AddLayout(instance, properties.Gap)
     return instance
 end
 
 local function Fonted(instance, bold)
-    instance.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+    instance.Font = bold and Enum.Font.GothamBold or Enum.Font.GothamMedium
     return instance
 end
 
@@ -318,10 +371,46 @@ function Motion.Destroy()
     return true
 end
 
+-- Motion off means the end state without the movement, which is what every caller below wants;
+-- routing all of them through here keeps that decision in one place.
+local function Apply(instance, channel, properties, animate)
+    if animate then
+        Motion.Play(instance, channel, properties)
+        return
+    end
+    Snap(instance, properties)
+end
+
+-- The four states of anything clickable, wired once: rest, hover, the press, and back to hover
+-- when the press ends inside the control. Hover and press are transparency changes, never colour
+-- changes - that is what keeps a glass surface reading as one material.
+local function Hoverable(instance, looks)
+    instance.MouseEnter:Connect(function()        Motion.Play(instance, "Hover", looks.Hover) end)
+    instance.MouseLeave:Connect(function()        Motion.Play(instance, "Hover", looks.Rest)  end)
+    instance.MouseButton1Down:Connect(function()  Motion.Play(instance, "Press", looks.Press) end)
+    instance.MouseButton1Up:Connect(function()    Motion.Play(instance, "Press", looks.Hover) end)
+end
+
+local RowLooks = {
+    Rest  = { BackgroundTransparency = Theme.RowAlpha   },
+    Hover = { BackgroundTransparency = Theme.HoverAlpha },
+    Press = { BackgroundTransparency = Theme.PressAlpha },
+}
+
+-- A plate grows the last few percent into place when it is shown, so it arrives rather than
+-- appears. The Scale is looked up by name: a plate built by hand without one is simply left alone,
+-- which is what keeps this optional for anyone laying out their own surface.
+local function Reveal(plate)
+    local scale = plate:FindFirstChild("Scale")
+    if scale == nil then return end
+    scale.Scale = Theme.RevealScale
+    Motion.Play(scale, "Open", { Scale = 1 })
+end
+
 --=== layout ================================================================
 
--- Exploit UI belongs in the hidden UI container, not the player's PlayerGui, so game
--- scripts cannot find it: gethui first, then the older fallbacks.
+-- UI belongs in the hidden UI container, not the player's PlayerGui
+-- gethui first, then the older fallbacks.
 local function UiContainer()
     if type(gethui) == "function" then
         local ok, hidden = pcall(gethui)
@@ -433,7 +522,14 @@ end
 
 --=== controls ==============================================================
 
--- A full-width bar with the knob riding left and the caption clearing it in both states.
+-- A full-width bar with the knob riding left and the caption clearing it in both states. Off is a
+-- pane of glass; on is a near-solid white pill, so the two states differ in density rather than in
+-- hue and the whole control stays monochrome.
+local SwitchLooks = {
+    [true]  = { Track = Theme.Text, TrackAlpha = Theme.SwitchOnAlpha, Knob = Theme.Invert, Caption = Theme.Invert },
+    [false] = { Track = Theme.Row,  TrackAlpha = Theme.RowAlpha,       Knob = Theme.Muted,  Caption = Theme.Text   },
+}
+
 local function Switch(properties)
     local track = Sticker(Element {
         ClassName       = "TextButton",
@@ -445,7 +541,7 @@ local function Switch(properties)
         LayoutOrder     = properties.Order or 1,
         Position        = properties.Position,
         ZIndex          = properties.ZIndex or 2,
-    }, { Color = properties.Color or "Row", Alpha = Theme.RowAlpha, Corner = "RowRadius", Stroke = "Line" })
+    }, { Color = properties.Color or "Row", Alpha = Theme.RowAlpha, Corner = "RowRadius", Stroke = "Line", Glass = true })
 
     local knob = Sticker(Element {
         ClassName   = "Frame",
@@ -468,16 +564,12 @@ local function Switch(properties)
     local state = properties.Value and true or false
 
     local function Render(animate)
+        local look     = SwitchLooks[state]
         local position = state and UDim2.new(1, -23, 0.5, -10) or UDim2.new(0, 3, 0.5, -10)
-        if animate then
-            Motion.Play(knob, "Switch", { Position = position })
-        else
-            knob.Position = position
-        end
 
-        caption.TextColor3     = Theme[state and "Invert" or "Text"]
-        knob.BackgroundColor3  = Theme[state and "Invert" or "Muted"]
-        track.BackgroundColor3 = Theme[state and "Text" or "Row"]
+        Apply(knob,    "Switch", { Position = position, BackgroundColor3 = look.Knob }, animate)
+        Apply(caption, "Switch", { TextColor3 = look.Caption },                         animate)
+        Apply(track,   "Switch", { BackgroundColor3 = look.Track, BackgroundTransparency = look.TrackAlpha }, animate)
     end
 
     track.MouseButton1Click:Connect(function()
@@ -519,7 +611,7 @@ local function Select(properties)
         LayoutOrder     = properties.Order or 1,
         Position        = properties.Position,
         ZIndex          = properties.ZIndex or 2,
-    }, { Color = "Well", Alpha = Theme.RowAlpha, Corner = "RowRadius", Stroke = "Line" })
+    }, { Color = "Well", Alpha = Theme.WellAlpha, Corner = "RowRadius", Stroke = "Line" })
 
     Texted(row, {
         Text     = string.upper(properties.Caption or "SELECT"),
@@ -550,7 +642,7 @@ local function Select(properties)
         CanvasSize          = UDim2.new(0, 0, 0, 0),
         Visible             = false,
         ZIndex              = 50,
-    }, { Color = "Surface", Alpha = 0.05, Corner = "RowRadius", Stroke = "Line", Padding = { 4, 4, 4, 4 } })
+    }, { Color = "Surface", Alpha = Theme.MenuAlpha, Corner = "RowRadius", Stroke = "Line", Rim = true, Glass = true, Padding = { 4, 4, 4, 4 } })
 
     Element {
         ClassName = "UIListLayout",
@@ -572,6 +664,14 @@ local function Select(properties)
         end
     end
 
+    -- An entry is glass over the menu, so at rest it is nothing at all and only the hover and the
+    -- press bring a fill up under the text.
+    local EntryLooks = {
+        Rest  = { BackgroundTransparency = 1 },
+        Hover = { BackgroundTransparency = Theme.HoverAlpha },
+        Press = { BackgroundTransparency = Theme.PressAlpha },
+    }
+
     for index, option in ipairs(options) do
         local entry = Sticker(Element {
             ClassName       = "TextButton",
@@ -582,7 +682,7 @@ local function Select(properties)
             Text            = "",
             LayoutOrder     = index,
             ZIndex          = 51,
-        }, { Color = "Well", Alpha = 1, Corner = "RowRadius" })
+        }, { Color = "Row", Alpha = 1, Corner = "RowRadius" })
 
         local label = Texted(entry, {
             Text     = option,
@@ -592,13 +692,8 @@ local function Select(properties)
             ZIndex   = 52,
         })
         entries[option] = { Frame = entry, label = label }
+        Hoverable(entry, EntryLooks)
 
-        entry.MouseEnter:Connect(function()
-            Motion.Play(entry, "Hover", { BackgroundColor3 = Theme.RowHover, BackgroundTransparency = Theme.RowAlpha })
-        end)
-        entry.MouseLeave:Connect(function()
-            Motion.Play(entry, "Hover", { BackgroundColor3 = Theme.Well, BackgroundTransparency = 1 })
-        end)
         entry.MouseButton1Click:Connect(function()
             Render(option)
             menu.Visible = false
@@ -646,7 +741,7 @@ local function Input(properties)
         PlaceholderColor3 = Theme.Muted,
         LayoutOrder       = properties.Order or 1,
         ZIndex            = properties.ZIndex or 2,
-    }, { Color = "Well", Alpha = Theme.RowAlpha, Corner = "RowRadius", Stroke = "Line" })
+    }, { Color = "Well", Alpha = Theme.WellAlpha, Corner = "RowRadius", Stroke = "Line" })
     Fonted(box)
 
     local function Submit(text)
@@ -698,6 +793,12 @@ local function Input(properties)
         end)
     end
 
+    -- The ring an input wears while the caret is in it: the same stroke, brought up to a solid
+    -- edge on focus and returned to the hairline on the way out, so focus adds no new furniture.
+    local stroke = box:FindFirstChild("Stroke")
+    box.Focused:Connect(function()   Motion.Play(stroke, "Hover", { Transparency = Theme.FocusAlpha }) end)
+    box.FocusLost:Connect(function() Motion.Play(stroke, "Hover", { Transparency = Theme.LineAlpha  }) end)
+
     return box
 end
 
@@ -712,7 +813,7 @@ local function Button(properties)
         Text            = "",
         LayoutOrder     = properties.Order or 1,
         ZIndex          = properties.ZIndex or 2,
-    }, { Color = properties.Color or "Row", Alpha = Theme.RowAlpha, Corner = "RowRadius", Stroke = properties.Stroke or "Line" })
+    }, { Color = properties.Color or "Row", Alpha = Theme.RowAlpha, Corner = "RowRadius", Stroke = properties.Stroke or "Line", Glass = true })
 
     Texted(button, {
         Text   = string.upper(properties.Caption or properties.Text or "BUTTON"),
@@ -722,12 +823,10 @@ local function Button(properties)
         ZIndex = (properties.ZIndex or 2) + 1,
     })
 
-    button.MouseEnter:Connect(function()
-        Motion.Play(button, "Hover", { BackgroundColor3 = Theme[properties.Hover or "RowHover"] })
-    end)
-    button.MouseLeave:Connect(function()
-        Motion.Play(button, "Hover", { BackgroundColor3 = Theme[properties.Color or "Row"], BackgroundTransparency = Theme.RowAlpha })
-    end)
+    -- Hover picks no new colour: the fill keeps its tint and simply comes up a little denser,
+    -- which is the one thing every glass control in this file does when it is touched.
+    Hoverable(button, RowLooks)
+
     button.MouseButton1Click:Connect(function()
         if properties.OnClick then
             properties.OnClick()
@@ -749,16 +848,24 @@ local function Heading(parent, order, text)
         ZIndex   = 3,
     })
 
-    Element {
+    -- The hairline runs out toward its right end, so a section break fades into the body instead
+    -- of stopping, which on a glass surface would read as a seam.
+    local divider = Element {
         ClassName              = "Frame",
         Parent                 = header,
         Name                   = "Divider",
         BackgroundColor3       = Theme.Line,
-        BackgroundTransparency = 0.4,
+        BackgroundTransparency = Theme.LineAlpha,
         BorderSizePixel        = 0,
         Position               = UDim2.fromOffset(0, 16),
         Size                   = UDim2.new(1, 0, 0, 1),
         ZIndex                 = 3,
+    }
+    Element {
+        ClassName    = "UIGradient",
+        Parent       = divider,
+        Name         = "Fade",
+        Transparency = NumberSequence.new { NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) },
     }
 
     return { Frame = header, Set = function() end, Get = function() return text end }
@@ -1225,14 +1332,19 @@ local function CreatePlateFrame(settings, order)
         AutomaticSize = Enum.AutomaticSize.Y,
         ZIndex        = 1,
     }, {
-        Color       = "Surface",
-        Alpha       = Theme.WindowAlpha,
-        Corner      = "Radius",
-        Stroke      = "Outline",
-        StrokeAlpha = Theme.OutlineAlpha,
-        Padding     = { Theme.Space.Pad, Theme.Space.Pad, Theme.Space.Pad, Theme.Space.Pad },
-        Gap         = { Padding = Theme.Space.Gap },
+        Color   = "Surface",
+        Alpha   = Theme.WindowAlpha,
+        Corner  = "Radius",
+        Stroke  = "Outline",
+        Rim     = true,
+        Glass   = true,
+        Padding = { Theme.Space.Pad, Theme.Space.Pad, Theme.Space.Pad, Theme.Space.Pad },
+        Gap     = { Padding = Theme.Space.Gap },
     })
+
+    -- The scale the plate is revealed with. It lives on the plate itself, so the whole window
+    -- moves together and nothing inside it has to know that it was shown rather than placed.
+    Element { ClassName = "UIScale", Parent = plate, Name = "Scale" }
 
     local bar = Sticker(Element {
         ClassName   = "Frame",
@@ -1240,7 +1352,7 @@ local function CreatePlateFrame(settings, order)
         Name        = "Bar",
         Size        = UDim2.new(1, 0, 0, 34),
         LayoutOrder = 1,
-    }, { Color = "Header", Alpha = Theme.PanelAlpha, Corner = "RowRadius", Stroke = "Line" })
+    }, { Color = "Header", Alpha = Theme.PanelAlpha, Corner = "RowRadius", Stroke = "Line", Glass = true })
 
     Texted(bar, {
         Text     = string.upper(settings.Name or "PLATE"),
@@ -1295,7 +1407,7 @@ end
 
 function MonoUI:CreatePlate(settings)
     settings = settings or {}
-    motionOn = settings.Motion ~= false
+    Motion.Enabled = settings.Motion ~= false
 
     local plate, bar, hint, status = CreatePlateFrame(settings, #App.plates + 1)
 
@@ -1344,6 +1456,7 @@ function MonoUI:CreatePlate(settings)
 
         if object.visible then
             RegisterSurface(object, settings)
+            Reveal(plate)
         else
             UnregisterSurface(object)
         end
@@ -1370,7 +1483,7 @@ function MonoUI:CreateWindow(settings)
     settings = settings or {}
     Settings.Enabled  = (settings.ConfigurationSaving or {}).Enabled == true
     Settings.FileName = (settings.ConfigurationSaving or {}).FileName or settings.Name or "MonoUI"
-    motionOn          = settings.Motion ~= false
+    Motion.Enabled    = settings.Motion ~= false
 
     local name = tostring(settings.Name or "MONOUI")
     EnsureGui(settings.GuiName or name)
@@ -1430,7 +1543,7 @@ function MonoUI:CreateWindow(settings)
         Text            = "",
         Visible         = false,
         ZIndex          = 5,
-    }, { Color = "Surface", Alpha = Theme.WindowAlpha, Corner = "RowRadius", Stroke = "Outline", StrokeAlpha = Theme.OutlineAlpha })
+    }, { Color = "Surface", Alpha = Theme.WindowAlpha, Corner = "RowRadius", Stroke = "Outline", Rim = true, Glass = true })
 
     Texted(chip, {
         Text   = string.upper(name),
@@ -1460,6 +1573,7 @@ function MonoUI:CreateWindow(settings)
 
         if window.visible then
             RegisterSurface(window, settings)
+            Reveal(plate)
         else
             UnregisterSurface(window)
         end
@@ -1516,7 +1630,7 @@ function MonoUI:CreateWindow(settings)
                 other.content.Parent = active and plate or holder
                 other.content.LayoutOrder = 3
                 other.button.BackgroundColor3 = Theme[active and "Text" or "Row"]
-                other.button.BackgroundTransparency = active and 0 or Theme.RowAlpha
+                other.button.BackgroundTransparency = active and Theme.SwitchOnAlpha or Theme.RowAlpha
                 other.label.TextColor3 = Theme[active and "Invert" or "Text"]
             end
         end
