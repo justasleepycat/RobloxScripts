@@ -56,20 +56,21 @@ local Theme = {
     RowHover     = Color3.fromRGB(255, 255, 255),                                    -- hovered buttons
     Well         = Color3.fromRGB(0, 0, 0),                                          -- inputs / selects
     Text         = Color3.fromRGB(250, 250, 250),                                    -- primary text
-    Muted        = Color3.fromRGB(160, 160, 160),                                    -- secondary text
+    Muted        = Color3.fromRGB(195, 195, 195),                                    -- secondary text: 160 measured 2.2:1 over a bright game; 195 reaches 4.65:1 at Balanced
+    TextStroke   = 0.70,                                                             -- a faint dark outline on every label: cheap armour against a bright game behind the glass
     Line         = Color3.fromRGB(255, 255, 255),                                    -- strokes
     Outline      = Color3.fromRGB(255, 255, 255),                                    -- window outline
     Invert       = Color3.fromRGB(10, 10, 10),                                       -- text on a white pill
     Car          = Color3.fromRGB(70, 70, 70),                                       -- tint for a player who is sitting in a car
     CarHover     = Color3.fromRGB(96, 96, 96),                                       -- and its hover
-    WindowAlpha  = 0.38,                                                             -- frosted plate, the blur shows through
+    WindowAlpha  = 0.22,                                                             -- plate transparency: the shipped preset's, and the number the contrast of the whole window hangs on
     PanelAlpha   = 0.90,                                                             -- title bar, white lift
     RowAlpha     = 0.92,                                                             -- buttons, rest
     HoverAlpha   = 0.84,                                                             -- buttons, hovered: denser fill, same tint
     PressAlpha   = 0.74,                                                             -- and pressed, denser still
     WellAlpha    = 0.55,                                                             -- inputs / selects are inset, so darker
     MenuAlpha    = 0.18,                                                             -- dropdown must stay readable
-    LineAlpha    = 0.88,                                                             -- hairline strokes
+    LineAlpha    = 0.50,                                                             -- hairline strokes: 12% white measured 1.35:1 against the plate, 50% reaches 3:1
     FocusAlpha   = 0.45,                                                             -- the ring an input shows while focused
     OutlineAlpha = 0.70,                                                             -- window outline
     SwitchOnAlpha = 0.08,                                                            -- the white pill of a switch that is on
@@ -77,11 +78,54 @@ local Theme = {
     MorphScale   = 0.20,                                                             -- and the scale that makes it the size of its chip, when the plate cannot be measured
     MaxHeight    = 420,                                                              -- a body taller than this scrolls instead of running off the screen
     FadeEdge     = 14,                                                               -- how deep the bands at a scrolling body's edges fade
+    SheenMax     = 0.08,                                                             -- how transparent the fill's sheen gets at the bottom; part of the preset, not a taste
+
+    -- Legibility presets. The plate is where the game shows through, and the sheen lowers its opacity
+    -- further at the bottom - where the content is - so a preset is a decision about both. Measured
+    -- over black, mid-gray and white backdrops, worst case at the bottom of the plate:
+    --   glass    text 3.94:1, muted 2.21:1, hairline 2.21:1   (the look, and it fails all three)
+    --   balanced text 7.97:1, muted 4.65:1, hairline 3.42:1   (passes; the shipped default)
+    --   solid    text 19.19:1, muted 10.78:1, hairline 5.35:1 (passes, with no glass left at all)
+    Legibility   = "Balanced",
+    Scale        = 1,                                                                -- the UI scale, in one number, applied as a UIScale on the gui every control lives in
+    Presets      = {
+        Glass    = { WindowAlpha = 0.38, SheenMax = 0.15, Blur = 16 },
+        Balanced = { WindowAlpha = 0.22, SheenMax = 0.08, Blur = 16 },
+        Solid    = { WindowAlpha = 0.00, SheenMax = 0.00, Blur = 0  },                -- opaque, so the blur is doing nothing and can go
+    },
     Radius       = 16,                                                               -- window corner radius
     RowRadius    = 10,                                                               -- inner corner radius
     Space        = { Micro = 4, Gap = 8, Pad = 14, Section = 16, Block = 22 },        -- one spacing scale
-    Type         = { Title = 15, Heading = 11, Label = 13, Body = 12, Support = 9 },  -- named sizes
+    Type         = { Title = 15, Heading = 11, Label = 13, Body = 12, Support = 11 }, -- named sizes
+    RowHeight    = 28,                                                               -- what a row is given, and what a finger gets in touch density
+    ControlHeight = 30,                                                              -- the height a control is born with
+
+    -- What the debug overlay measures against. A few hundred instances for a whole window, and a driver that
+    -- has let go of the frame while nothing is moving.
+    Budgets = { Instances = 300 },
+
+    -- How much room the same layout is given. Comfortable is what the numbers above say, compact fits more on a
+    -- screen, and touch is for a finger, where the guidance is at least 32 px of control and 6 to 8 between
+    -- them. Setting one rescales the space scale and resizes what is already on screen, by name.
+    Density = {
+        comfortable = { Scale = 1.00, Row = 28, Gap = 8 },
+        compact     = { Scale = 0.75, Row = 24, Gap = 6 },
+        touch       = { Scale = 1.25, Row = 36, Gap = 8 },
+    },
     Width        = 720,                                                              -- default plate width
+    MinWidth     = 240,                                                              -- a grip can make a plate narrower, but not a sliver
+    MaxWidth     = 1200,
+    Snap         = 12,                                                               -- how close an edge has to come before a drag takes it
+
+    -- How far off the game a surface sits. Three levels, each a change in how much fill it carries and how
+    -- bright its rim is. The blur behind the window is one effect shared by everything and does not belong to
+    -- a level; what makes a dropdown read as being above a window is that it is drawn with the overlay level,
+    -- not a shadow, because this palette has no shadow to spend.
+    Elevation = {
+        base    = { Alpha = 0.00,  Rim = 0.25 },                                     -- the plate itself
+        raised  = { Alpha = -0.06, Rim = 0.10 },
+        overlay = { Alpha = -0.14, Rim = 0.00 },                                     -- dropdowns, menus and toasts: more fill, a brighter edge
+    },
     Blur         = 16,                                                               -- backdrop blur, 0 for none
     VisibleRows  = 5,                                                                -- options shown before a dropdown scrolls
     Rain         = {                                                                 -- drops behind the window while it is up, sized by weather rather than by dice
@@ -171,12 +215,36 @@ local RimTransparency = NumberSequence.new {
     NumberSequenceKeypoint.new(1.00, 0.55),
 }
 
--- The fill is a little denser at the top than the bottom, which is what reads as a pane of glass
--- lying under a light rather than a flat cutout.
-local SheenTransparency = NumberSequence.new {
-    NumberSequenceKeypoint.new(0, 0.00),
-    NumberSequenceKeypoint.new(1, 0.45),
-}
+-- The fill is a little denser at the top than the bottom, which is what reads as a pane of glass lying
+-- under a light - and how much denser is a legibility decision rather than a decorative one, because
+-- the plate is where the game shows through. The cap comes from the active preset.
+local function SheenSequence()
+    return NumberSequence.new {
+        NumberSequenceKeypoint.new(0, 0.00),
+        NumberSequenceKeypoint.new(1, Theme.SheenMax or 0),
+    }
+end
+
+-- What a preset has to be able to reach once it has been applied: the surfaces the game shows through,
+-- the muted text, and the hairlines. Weak keys, so a destroyed window leaves nothing behind.
+local GlassSurfaces = setmetatable({}, { __mode = "k" })
+local MutedLabels   = setmetatable({}, { __mode = "k" })
+local LineStrokes   = setmetatable({}, { __mode = "k" })
+
+-- A surface the game shows through: the plate, its chip, a tooltip, a toast. Each remembers how far off the
+-- game it sits, because a preset rewrite has to put the fill back at that surface's level rather than at the
+-- bare token - and it is kept here rather than on the instance, which would reject the field.
+local SurfaceLevels = setmetatable({}, { __mode = "k" })
+
+local function Glass(instance, level)
+    GlassSurfaces[instance] = true
+    SurfaceLevels[instance] = level or "base"
+    return instance
+end
+
+local function LevelOf(instance)
+    return SurfaceLevels[instance] or "base"
+end
 
 -- 0.5 -> pill, 12 -> pixels, "RowRadius" -> that palette entry
 local function ResolveRadius(corner)
@@ -202,17 +270,23 @@ end
 local function AddStroke(instance, properties)
     if properties.Stroke == nil then return end
 
-    local hasRim = properties.Rim == true
+    -- Rim may be true, for the brightest edge the gradient can draw, or a number, which is how much of that
+    -- edge to keep - which is what lets an elevation level say how bright its rim is.
+    local hasRim = properties.Rim ~= nil and properties.Rim ~= false
+    local rim    = type(properties.Rim) == "number" and properties.Rim or 0
     local stroke = Element {
         ClassName       = "UIStroke",
         Parent          = instance,
         Name            = "Stroke",
         Color           = Theme[properties.Stroke] or Theme.Line,
         Thickness       = properties.StrokeWidth or 1,
-        Transparency    = hasRim and 0 or (properties.StrokeAlpha or Theme.LineAlpha),
+        Transparency    = hasRim and rim or (properties.StrokeAlpha or Theme.LineAlpha),
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
     }
-    if not hasRim then return end
+    if not hasRim then
+        LineStrokes[stroke] = true                                                 -- a preset moves it, so it has to be findable again
+        return
+    end
 
     Element { ClassName = "UIGradient", Parent = stroke, Name = "Rim", Rotation = 45, Transparency = RimTransparency }
 end
@@ -221,7 +295,7 @@ end
 -- TextBox it would also tint the text: controls that carry text keep the fill unglassed.
 local function AddSheen(instance, properties)
     if not properties.Glass then return end
-    Element { ClassName = "UIGradient", Parent = instance, Name = "Sheen", Rotation = 90, Transparency = SheenTransparency }
+    Element { ClassName = "UIGradient", Parent = instance, Name = "Sheen", Rotation = 90, Transparency = SheenSequence() }
 end
 
 local function AddPadding(instance, padding)
@@ -262,14 +336,31 @@ local function Sticker(instance, properties)
     return instance
 end
 
-local function Fonted(instance, bold)
+local function Fonted(instance, bold, mono)
+    if mono then
+        instance.Font = Enum.Font.RobotoMono                                            -- for numbers, so they do not jitter as digits change
+        return instance
+    end
     instance.Font = bold and Enum.Font.GothamBold or Enum.Font.GothamMedium
     return instance
 end
 
+-- A surface's fill and rim once its elevation level is taken into account. Alpha is a transparency and Rim is
+-- how much of the rim gradient to keep, so the overlay level is the one that carries more fill and a brighter
+-- edge - which is the whole of what makes a dropdown look like it is above a window.
+local function Lifted(level, alpha)
+    local look = Theme.Elevation[level] or Theme.Elevation.base
+    return math.clamp((alpha or 0) + (look.Alpha or 0), 0, 1)
+end
+
+local function LiftedRim(level)
+    local look = Theme.Elevation[level] or Theme.Elevation.base
+    return look.Rim
+end
+
 local function Texted(parent, properties)
     local label = Element {
-        ClassName              = "TextLabel",
+        ClassName              = properties.ClassName or "TextLabel",                -- a label that can be clicked is a button
         Parent                 = parent,
         Name                   = properties.Name,                                    -- named where a control needs to be found again
         BackgroundTransparency = 1,
@@ -286,7 +377,16 @@ local function Texted(parent, properties)
         AnchorPoint            = properties.AnchorPoint,                              -- the chevron turns about its middle
         Rotation               = properties.Rotation,
     }
-    return Fonted(label, properties.Bold ~= false)
+    -- Every label wears a faint dark outline: the cheapest armour there is against a bright game showing
+    -- through a translucent plate, and it costs two properties.
+    label.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
+    label.TextStrokeTransparency = Theme.TextStroke or 0.7
+
+    if (properties.Tint or "Text") == "Muted" then
+        MutedLabels[label] = true                                                  -- a preset moves it, so it has to be findable again
+    end
+
+    return Fonted(label, properties.Bold ~= false, properties.Mono)
 end
 
 --=== motion ================================================================
@@ -352,6 +452,7 @@ Motion.Specs = {
     Open     = { Kind = "Cubic", Duration = 0.24, Ease = Easings.CubicOut },          -- a window arriving, or a body unfolding
     Dismiss  = { Kind = "Cubic", Duration = 0.16, Ease = Easings.CubicIn },           -- a window leaving, or a toast going
     Toast    = { Kind = "Cubic", Duration = 0.26, Ease = Easings.CubicOut },
+    Sweep    = { Kind = "Cubic", Duration = 1.10, Ease = Easings.CubicInOut },         -- a progress bar's band crossing, or a skeleton's sheen
 }
 
 -- Public, so a script that owns its own layout can honour its own motion setting: the window
@@ -644,6 +745,11 @@ function Motion.Cancel(instance)
     return true
 end
 
+-- What the driver is holding, so the debug overlay can report the idle cost this module promises not to pay.
+function Motion.Stats()
+    return { Tracks = Animator.count, Running = Animator.connection ~= nil }
+end
+
 function Motion.Destroy()
     for instance in pairs(Animator.tracks) do
         Animator.tracks[instance] = nil
@@ -762,13 +868,100 @@ local DragGlideMin = 120                                                        
 
 -- Where a plate is allowed to be: enough of it stays on screen to be caught again. The drag ends
 -- here, and so does the glide it is released with, so a thrown plate cannot leave the screen either.
-local function ClampedPosition(base, target, x, y)
+-- The guides that appear while a plate is lined up with a screen edge: two hairlines, made once per
+-- ScreenGui and moved rather than recreated. They live in the same gui as the plate they belong to, so
+-- nothing here needs to know about the app's own gui.
+local guideCache = setmetatable({}, { __mode = "k" })
+
+local function Guides(target)
+    local gui = target:FindFirstAncestorOfClass("ScreenGui")
+    if gui == nil then
+        return nil
+    end
+    if guideCache[gui] ~= nil and guideCache[gui].Vertical.Parent ~= nil then
+        return guideCache[gui]
+    end
+
+    local function Hairline(name, size)
+        return Element {
+            ClassName              = "Frame",
+            Parent                 = gui,
+            Name                   = name,
+            BackgroundColor3       = Theme.Text,
+            BackgroundTransparency = 0.55,
+            BorderSizePixel        = 0,
+            Size                   = size,
+            Visible                = false,
+            ZIndex                 = 2147482000,
+        }
+    end
+
+    local guides = {
+        Vertical   = Hairline("GuideVertical", UDim2.new(0, 1, 1, 0)),
+        Horizontal = Hairline("GuideHorizontal", UDim2.new(1, 0, 0, 1)),
+    }
+    guideCache[gui] = guides
+    return guides
+end
+
+local function ShowGuide(guide, position, vertical)
+    if guide == nil then
+        return
+    end
+
+    guide.Visible = position ~= nil
+    if position ~= nil then
+        guide.Position = vertical and UDim2.fromOffset(position, 0) or UDim2.fromOffset(0, position)
+    end
+end
+
+-- Where a plate may sit: never far enough off screen to be lost. With snap on, coming within a few pixels
+-- of an edge or a corner counts as meaning that edge, and the caller is handed back which axes lined up so
+-- the guides can be drawn.
+local function ClampedPosition(base, target, x, y, snap)
     local camera = Workspace.CurrentCamera
     local screen = camera and camera.ViewportSize or Vector2.new(1920, 1080)
-    return UDim2.new(
-        base.X.Scale, math.clamp(x, 8 - target.AbsoluteSize.X + 60, screen.X - 60),
-        base.Y.Scale, math.clamp(y, 8, screen.Y - 40)
-    )
+    local leastX = 8 - target.AbsoluteSize.X + 60
+    local mostX  = screen.X - 60
+    local leastY = 8
+    local mostY  = screen.Y - 40
+
+    local wantedX = math.clamp(x, leastX, mostX)
+    local wantedY = math.clamp(y, leastY, mostY)
+    local linedX  = nil
+    local linedY  = nil
+
+    if snap then
+        -- The edges worth taking are the plate's own against the screen's, not the clamp bounds: those are
+        -- where a plate would be about to fall off, which the clamp has already dealt with.
+        local reach  = Theme.Snap or 12
+        local left   = 8
+        local right  = screen.X - target.AbsoluteSize.X - 8
+        local top    = 8
+        local bottom = screen.Y - target.AbsoluteSize.Y - 8
+
+        local function Nearest(value, first, second)
+            if math.abs(value - first) <= reach then
+                return first
+            end
+            if math.abs(value - second) <= reach then
+                return second
+            end
+            return nil
+        end
+
+        local linedToX = Nearest(wantedX, left, right)
+        if linedToX ~= nil then
+            wantedX, linedX = linedToX, linedToX
+        end
+
+        local linedToY = Nearest(wantedY, top, bottom)
+        if linedToY ~= nil then
+            wantedY, linedY = linedToY, linedToY
+        end
+    end
+
+    return UDim2.new(base.X.Scale, wantedX, base.Y.Scale, wantedY), linedX, linedY
 end
 
 -- Drag from any handle: a title bar, the plate itself, or a chip while a window is hidden.
@@ -826,6 +1019,9 @@ local function Dragging(owner, target, ...)
                 input.Changed:Connect(function()
                     if input.UserInputState == Enum.UserInputState.End then
                         drag.active = false
+                        local guides = Guides(target)
+                        ShowGuide(guides and guides.Vertical, nil, true)
+                        ShowGuide(guides and guides.Horizontal, nil, false)
                         Glide()
                     end
                 end)
@@ -862,7 +1058,12 @@ local function Dragging(owner, target, ...)
             drag.last     = wanted
         end
 
-        target.Position = ClampedPosition(drag.base, target, drag.base.X.Offset + stepX, drag.base.Y.Offset + stepY)
+        local placed, linedX, linedY = ClampedPosition(drag.base, target, drag.base.X.Offset + stepX, drag.base.Y.Offset + stepY, owner.snap ~= false)
+
+        target.Position = placed
+        local guides = Guides(target)
+        ShowGuide(guides and guides.Vertical, linedX, true)
+        ShowGuide(guides and guides.Horizontal, linedY, false)
     end)
 
     return drag
@@ -1094,6 +1295,12 @@ function Focus.Register(control)
 
             local typing  = UserInput.GetFocusedTextBox ~= nil and UserInput:GetFocusedTextBox() ~= nil
             local pressed = Focus.Keys[input.KeyCode]
+
+            -- The layer that is up gets first refusal on the key, and gets it before the typing rule: a palette
+            -- holds the caret itself while it is open, and still wants Return and the arrows.
+            if Focus.layer ~= nil and Focus.layer.Key ~= nil and Focus.layer.Key(input.KeyCode) then
+                return
+            end
             if pressed ~= nil then
                 if typing and input.KeyCode ~= Enum.KeyCode.Escape then return end
                 pressed()
@@ -1142,7 +1349,222 @@ Focus.Keys = {
     [Enum.KeyCode.Return]   = function() Focus.Activate() end,
     [Enum.KeyCode.Space]    = function() Focus.Activate() end,
     [Enum.KeyCode.Escape]   = function() Focus.Escape() end,
+    [Enum.KeyCode.Slash]    = function() MonoUI:OpenPalette() end,                    -- the two ways in that people reach for
+    [Enum.KeyCode.K]        = function()
+        if UserInput:IsKeyDown(Enum.KeyCode.LeftControl) or UserInput:IsKeyDown(Enum.KeyCode.RightControl) then
+            MonoUI:OpenPalette()
+        end
+    end,
+    [Enum.KeyCode.Z]        = function()
+        if UserInput:IsKeyDown(Enum.KeyCode.LeftControl) or UserInput:IsKeyDown(Enum.KeyCode.RightControl) then
+            MonoUI:Undo()
+        end
+    end,
+    [Enum.KeyCode.Y]        = function()
+        if UserInput:IsKeyDown(Enum.KeyCode.LeftControl) or UserInput:IsKeyDown(Enum.KeyCode.RightControl) then
+            MonoUI:Redo()
+        end
+    end,
 }
+
+--=== elements ==============================================================
+
+-- Every named element answers the same five questions, because a script coming over from ArrayField asks
+-- them without knowing which control it is holding. Property reads and writes fall through to the frame,
+-- so an element still behaves like the thing it wraps - which is what keeps a wrapped TextBox a TextBox
+-- to everything that was already using it.
+-- Declared here, filled in further down: an element's SetEnabled wants to say why it cannot be used, and the
+-- tooltip machinery that says it is defined later in the file than the element methods are.
+local Describe
+
+local function ElementMethods(frame, own)
+    own = own or {}
+
+    -- A destroyed element answers nothing rather than throwing: a saved config can still be applied to a
+    -- control a script has already thrown away.
+    local function Guarded(inner)
+        if inner == nil then
+            return nil
+        end
+        return function(first, second, ...)
+            if frame.Parent == nil then
+                return nil                                                           -- gone: a destroyed element answers nothing
+            end
+            if type(first) == "table" and first.Frame == frame then
+                return inner(second, ...)                                            -- called with a colon, so the element is not the value
+            end
+            return inner(first, second, ...)
+        end
+    end
+
+    local element                                                                     -- declared first: Guarded above compares against it
+    element = {
+        Frame    = frame,
+        Set      = Guarded(own.Set),
+        Get      = Guarded(own.Get),
+        Enabled  = true,
+        Faded    = {},                                                               -- what each part looked like before it was disabled
+    }
+
+    function element:SetVisible(on)
+        frame.Visible = on ~= false
+        return frame.Visible
+    end
+
+    -- Disabled is a look and a refusal: the parts fade to the 40% that says so, and everything that could
+    -- be clicked stops taking the pointer. What the reason for it is, and the rest of the states, arrive
+    -- with the state language.
+    function element:SetEnabled(on, reason)
+        element.Enabled = on ~= false
+        if not element.Enabled and reason ~= nil then
+            Describe(frame, reason)                                                  -- the reason, on the hover that finds it out
+        end
+
+        local parts = { frame }
+        for _, part in ipairs(frame:GetDescendants()) do
+            parts[#parts + 1] = part
+        end
+
+        for _, part in ipairs(parts) do
+            pcall(function()
+                if part.ClassName == "TextButton" or part.ClassName == "TextBox" then
+                    part.Active = element.Enabled
+                end
+
+                if element.Faded[part] == nil then
+                    element.Faded[part] = {
+                        BackgroundTransparency = part.BackgroundTransparency,
+                        TextTransparency       = part.TextTransparency,
+                        Visible                = part.Visible,
+                    }
+                end
+
+                local was = element.Faded[part]
+                part.BackgroundTransparency = element.Enabled and was.BackgroundTransparency or math.max(0.6, was.BackgroundTransparency)
+                part.TextTransparency       = element.Enabled and was.TextTransparency       or math.max(0.6, was.TextTransparency)
+            end)
+        end
+
+        return element.Enabled
+    end
+
+    function element:Destroy()
+        if own.Destroy ~= nil then
+            own.Destroy()
+        end
+        pcall(function()
+            frame:Destroy()
+        end)
+    end
+
+    return setmetatable(element, {
+        __index = function(_, key)
+            local held = own[key]
+            if held ~= nil then
+                return held
+            end
+
+            local value = frame[key]
+            if type(value) == "function" then
+                return function(_, ...)                                              -- an instance's own method: called on the frame, not on the wrapper
+                    return value(frame, ...)
+                end
+            end
+            return value
+        end,
+        __newindex = function(_, key, value)
+            frame[key] = value
+        end,
+    })
+end
+
+--=== glyphs ================================================================
+
+-- Glyphs drawn out of thin frames and rounded corners rather than an uploaded sheet, because an executor
+-- has nowhere to upload one to. They are crude by nature and meant to be read at a glance, next to a word.
+local Glyphs = {}
+
+local function GlyphHolder(parent, size)
+    return Element {
+        ClassName              = "Frame",
+        Parent                 = parent,
+        Name                   = "Glyph",
+        AnchorPoint            = Vector2.new(0.5, 0.5),
+        Position               = UDim2.new(0.5, 0, 0.5, 0),
+        Size                   = UDim2.fromOffset(size, size),
+        BackgroundTransparency = 1,
+        ZIndex                 = 6,
+    }
+end
+
+local function GlyphBar(parent, size, width, height, rotation, x, y, colour)
+    return Sticker(Element {
+        ClassName   = "Frame",
+        Parent      = parent,
+        Name        = "Bar",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position    = UDim2.new(0.5, x * size, 0.5, y * size),
+        Size        = UDim2.fromOffset(width * size, height),
+        Rotation    = rotation,
+        ZIndex      = 7,
+    }, { Color = colour or "Text", Corner = 0.5 })
+end
+
+function Glyphs.dot(parent, size, colour)
+    return Sticker(Element {
+        ClassName   = "Frame",
+        Parent      = parent,
+        Name        = "Glyph",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position    = UDim2.new(0.5, 0, 0.5, 0),
+        Size        = UDim2.fromOffset(size, size),
+        ZIndex      = 6,
+    }, { Color = colour or "Text", Corner = 0.5 })
+end
+
+function Glyphs.ring(parent, size, colour)
+    local ring = GlyphHolder(parent, size)
+    Sticker(ring, { Corner = 0.5 })
+    Element {
+        ClassName       = "UIStroke",
+        Parent          = ring,
+        Name            = "Stroke",
+        Color           = Theme[colour or "Text"],
+        Thickness       = 1.5,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }
+    return ring
+end
+
+function Glyphs.check(parent, size, colour)
+    local holder = GlyphHolder(parent, size)
+    GlyphBar(holder, size, 0.45, 2, 45, -0.18, 0.12, colour)
+    GlyphBar(holder, size, 0.90, 2, -45, 0.08, -0.08, colour)
+    return holder
+end
+
+function Glyphs.cross(parent, size, colour)
+    local holder = GlyphHolder(parent, size)
+    GlyphBar(holder, size, 0.85, 2, 45, 0, 0, colour)
+    GlyphBar(holder, size, 0.85, 2, -45, 0, 0, colour)
+    return holder
+end
+
+-- A warning is an exclamation: a bar with a dot under it. Info is the same the other way up, which is a
+-- distinction that survives being read at nine pixels in one colour.
+function Glyphs.warning(parent, size, colour)
+    local holder = GlyphHolder(parent, size)
+    GlyphBar(holder, size, 0.16, 2, 0, -0.02, -0.18, colour)
+    GlyphBar(holder, size, 0.16, 2, 0, 0.02, 0.26, colour)
+    return holder
+end
+
+function Glyphs.info(parent, size, colour)
+    local holder = GlyphHolder(parent, size)
+    GlyphBar(holder, size, 0.16, 2, 0, -0.02, 0.26, colour)
+    GlyphBar(holder, size, 0.16, 2, 0, 0.02, -0.18, colour)
+    return holder
+end
 
 --=== tooltip ===============================================================
 
@@ -1192,6 +1614,7 @@ local function TooltipFor(frame)
         Visible           = false,
         ZIndex            = 2147483000,
     }, { Color = "Surface", Alpha = Theme.WindowAlpha, Corner = "RowRadius", Stroke = "Outline", Rim = true, Glass = true, Padding = { 5, 9, 5, 9 } })
+    Glass(tip, "overlay")
 
     local label = Texted(tip, {
         Name   = "Label",
@@ -1210,7 +1633,7 @@ end
 -- The wait is what makes a tooltip a tooltip: a description that appears as the pointer crosses the
 -- window on its way somewhere else is noise, and one that appears once the pointer has stopped is an
 -- answer. Leaving before the wait is over cancels it, which is what the token counts.
-local function Describe(frame, description)
+Describe = function(frame, description)
     if frame == nil or description == nil or description == "" then
         return
     end
@@ -1281,7 +1704,7 @@ local function Switch(properties)
         ClassName       = "TextButton",
         Parent          = properties.Parent,
         Name            = properties.Name or properties.Caption or "Switch",
-        Size            = properties.Size or UDim2.new(1, 0, 0, 30),
+        Size            = properties.Size or UDim2.new(1, 0, 0, Theme.ControlHeight or 30),
         AutoButtonColor = false,
         Text            = "",
         LayoutOrder     = properties.Order or 1,
@@ -1382,7 +1805,7 @@ local function Select(properties)
         ClassName       = "TextButton",
         Parent          = properties.Parent,
         Name            = properties.Name or properties.Caption or "Select",
-        Size            = properties.Size or UDim2.new(1, 0, 0, properties.Height or 32),
+        Size            = properties.Size or UDim2.new(1, 0, 0, properties.Height or (Theme.ControlHeight or 30) + 2),
         AutoButtonColor = false,
         Text            = "",
         LayoutOrder     = properties.Order or 1,
@@ -1400,6 +1823,7 @@ local function Select(properties)
     })
 
     local value = Texted(row, {
+        Name     = "Value",
         Tint     = "Text",
         Size     = Theme.Type.Body,
         X        = Enum.TextXAlignment.Right,
@@ -1434,7 +1858,7 @@ local function Select(properties)
         CanvasPosition      = UDim2.new(0, 0, 0, 0),                                  -- where the list is scrolled to is decided when it opens
         Visible             = false,
         ZIndex              = 50,
-    }, { Color = "Surface", Alpha = Theme.MenuAlpha, Corner = "RowRadius", Stroke = "Line", Rim = true, Glass = true, Padding = { 4, 4, 4, 4 } })
+    }, { Color = "Surface", Alpha = Lifted("overlay", Theme.MenuAlpha), Corner = "RowRadius", Stroke = "Line", Rim = LiftedRim("overlay"), Glass = true, Padding = { 4, 4, 4, 4 } })
 
     Element {
         ClassName = "UIListLayout",
@@ -1458,10 +1882,29 @@ local function Select(properties)
     local marked   = nil                                                              -- the entry the keys have reached
     local prefix   = ""
     local open     = false
+    local multiple = properties.Multi == true                                         -- more than one answer, so the menu stays open
+    local chosen   = {}                                                               -- and this is what has been answered
     local layer                                                                       -- the transient slot, declared before the two functions that use it
 
     local function Render(name)
-        selected         = name
+        selected = name
+
+        if multiple then
+            local names = {}
+            for _, option in ipairs(order) do
+                if chosen[option] then
+                    names[#names + 1] = option
+                end
+            end
+
+            value.Text       = #names > 0 and table.concat(names, ", ") or "—"
+            value.TextColor3 = #names > 0 and Theme.Text or Theme.Muted
+            for option, entry in pairs(entries) do
+                entry.label.TextColor3 = Theme[chosen[option] and "Text" or "Muted"]
+            end
+            return
+        end
+
         value.Text       = name or "—"
         value.TextColor3 = name and Theme.Text or Theme.Muted
         for option, entry in pairs(entries) do
@@ -1645,6 +2088,15 @@ local function Select(properties)
         Hoverable(entry, EntryLooks)
 
         entry.MouseButton1Click:Connect(function()
+            if multiple then
+                chosen[option] = not chosen[option] or nil
+                Render(selected)
+                if properties.OnSelect then
+                    properties.OnSelect(chosen)
+                end
+                return                                                                 -- the menu stays open: more than one is the point
+            end
+
             Render(option)
             Shut()
             if properties.OnSelect then
@@ -1668,11 +2120,24 @@ local function Select(properties)
     return Focus.Register {
         Frame    = row,
         Activate = Activate,
-        Set      = function(option)
-            Render(tostring(option))
+        Set      = function(next)
+            if multiple and type(next) == "table" then
+                for option in pairs(chosen) do
+                    chosen[option] = nil
+                end
+                for key, on in pairs(next) do
+                    if on then
+                        chosen[type(key) == "number" and tostring(on) or tostring(key)] = true
+                    end
+                end
+                Render(selected)
+                return chosen
+            end
+
+            Render(tostring(next))
         end,
         Get      = function()
-            return selected
+            return multiple and chosen or selected
         end,
         Options  = options,
     }
@@ -1850,7 +2315,7 @@ local function Button(properties)
         ClassName       = "TextButton",
         Parent          = properties.Parent,
         Name            = properties.Name or properties.Caption or "Button",
-        Size            = properties.Size or UDim2.new(1, 0, 0, 30),
+        Size            = properties.Size or UDim2.new(1, 0, 0, Theme.ControlHeight or 30),
         Position        = properties.Position,
         AutoButtonColor = false,
         Text            = "",
@@ -1927,6 +2392,587 @@ end
 -- The app's own state is filled in further down, but the configuration is defined first and needs to
 -- read the window list, so the name is declared here and the table itself is built there.
 local App
+
+--=== slider ================================================================
+
+-- A track with a fill, a knob, and the number beside it in a face that does not jitter as the digits
+-- change. The fill follows the pointer on a decay rather than over a duration, because a drag is a value
+-- being retargeted every frame - which is what a decay is for - and the same decay carries it when the
+-- value is set from anywhere else. The callback waits for the finger to come off: a slider dragged across
+-- its range should not write a config file fifty times.
+local function Slider(properties)
+    local minimum = tonumber(properties.Min) or 0
+    local maximum = tonumber(properties.Max) or 100
+    if maximum < minimum then
+        minimum, maximum = maximum, minimum
+    end
+
+    local increment = tonumber(properties.Increment) or 0
+    local suffix    = properties.Suffix and tostring(properties.Suffix) or ""
+    local value     = math.clamp(tonumber(properties.Value) or minimum, minimum, maximum)
+
+    local row = Sticker(Element {
+        ClassName       = "TextButton",
+        Parent          = properties.Parent,
+        Name            = properties.Name or properties.Caption or "Slider",
+        Size            = properties.Size or UDim2.new(1, 0, 0, 36),
+        AutoButtonColor = false,
+        Text            = "",
+        LayoutOrder     = properties.Order or 1,
+        Position        = properties.Position,
+        ZIndex          = properties.ZIndex or 2,
+    }, { Color = "Well", Alpha = Theme.WellAlpha, Corner = "RowRadius", Stroke = "Line" })
+
+    Texted(row, {
+        Text     = string.upper(properties.Caption or "SLIDER"),
+        Tint     = "Muted",
+        Size     = Theme.Type.Heading,
+        Position = UDim2.fromOffset(10, 4),
+        Size2    = UDim2.new(1, -110, 0, 12),
+        ZIndex   = 3,
+    })
+
+    -- The number is a button rather than a label: clicking it is how a value the track cannot be dragged
+    -- onto gets asked for exactly.
+    local readout = Texted(row, {
+        ClassName = "TextButton",
+        Name      = "Readout",
+        Text      = "",
+        Mono      = true,
+        Size      = Theme.Type.Body,
+        X         = Enum.TextXAlignment.Right,
+        Position  = UDim2.fromOffset(0, 4),
+        Size2     = UDim2.new(1, -10, 0, 12),
+        ZIndex    = 3,
+    })
+
+    -- A 16 px band to grab rather than the 6 px line that is drawn: a track is a target, and a target
+    -- wants to be larger than it looks.
+    local track = Element {
+        ClassName              = "Frame",
+        Parent                 = row,
+        Name                   = "Track",
+        BackgroundTransparency = 1,
+        Position               = UDim2.fromOffset(10, 18),
+        Size                   = UDim2.new(1, -20, 0, 16),
+        ZIndex                 = 3,
+    }
+
+    local line = Sticker(Element {
+        ClassName   = "Frame",
+        Parent      = track,
+        Name        = "Line",
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position    = UDim2.new(0, 0, 0.5, 0),
+        Size        = UDim2.new(1, 0, 0, 6),
+        ZIndex      = 3,
+    }, { Color = "Line", Alpha = 0.75, Corner = 0.5 })
+
+    local fill = Sticker(Element {
+        ClassName   = "Frame",
+        Parent      = line,
+        Name        = "Fill",
+        Size        = UDim2.new(0, 0, 1, 0),
+        ZIndex      = 4,
+    }, { Color = "Text", Alpha = 0.30, Corner = 0.5 })
+
+    local knob = Sticker(Element {
+        ClassName   = "Frame",
+        Parent      = track,
+        Name        = "Knob",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position    = UDim2.new(0, 0, 0.5, 0),
+        Size        = UDim2.fromOffset(12, 12),
+        ZIndex      = 5,
+    }, { Color = "Text", Corner = 0.5, Stroke = "Outline" })
+
+    local function Format(number)
+        if number % 1 == 0 then
+            return string.format("%d", number)
+        end
+        return string.format("%.2f", number)
+    end
+
+    local function Clamp(number, snap)
+        number = math.clamp(tonumber(number) or value, minimum, maximum)
+        if snap and increment > 0 then
+            number = math.clamp(minimum + math.floor((number - minimum) / increment + 0.5) * increment, minimum, maximum)
+        end
+        return number
+    end
+
+    local function Render(animate)
+        local fraction = (maximum > minimum) and (value - minimum) / (maximum - minimum) or 0
+        local size     = UDim2.new(fraction, 0, 1, 0)
+        local ride     = UDim2.new(fraction, 0, 0.5, 0)
+
+        if animate then
+            Motion.Follow(fill, "Size",     size, Motion.Specs.Follow.Rate)
+            Motion.Follow(knob, "Position", ride, Motion.Specs.Follow.Rate)
+        else
+            fill.Size     = size
+            knob.Position = ride
+        end
+
+        readout.Text = Format(value) .. suffix
+    end
+
+    local function Set(next, animate, exact)
+        value = Clamp(next, not exact)                                               -- a typed number is clamped, not snapped: it is how you ask for something the track cannot reach
+        Render(animate)
+        return value
+    end
+
+    local function FromPointer(x)
+        local width = track.AbsoluteSize.X
+        if width <= 0 then
+            return value
+        end
+        return minimum + ((x - track.AbsolutePosition.X) / width) * (maximum - minimum)
+    end
+
+    local dragging = false
+
+    track.InputBegan:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+
+        dragging = true
+        Set(FromPointer(input.Position.X), true)
+
+        input.Changed:Connect(function()
+            if input.UserInputState ~= Enum.UserInputState.End then
+                return
+            end
+            dragging = false
+            if properties.OnRelease then
+                properties.OnRelease(value)                                          -- once a gesture, not once a frame
+            end
+        end)
+    end)
+
+    local following = UserInput.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        Set(FromPointer(input.Position.X), true)
+    end)
+
+    row.Destroying:Connect(function()
+        pcall(function()
+            following:Disconnect()                                                   -- a slider that has gone stops following the pointer
+        end)
+    end)
+
+    -- Typing an exact number: the field takes the caret and Return settles it.
+    readout.MouseButton1Click:Connect(function()
+        if row:FindFirstChild("Editor") ~= nil then
+            return
+        end
+
+        local editor                                                                 -- declared first: the submit below closes over it
+        editor = Input {
+            Parent        = row,
+            Name          = "Editor",
+            Size          = UDim2.new(1, -20, 0, 18),
+            Position      = UDim2.fromOffset(10, 2),
+            X             = Enum.TextXAlignment.Right,
+            Text          = Format(value),
+            NumbersOnly   = true,
+            SubmitOnEnter = true,
+            Order         = 1,
+            ZIndex        = 6,
+            OnSubmit      = function(text)
+                local typed = tonumber(text)
+                if typed ~= nil then
+                    Set(typed, true, true)
+                    if properties.OnRelease then
+                        properties.OnRelease(value)
+                    end
+                end
+                editor:Destroy()
+            end,
+        }
+        editor:CaptureFocus()
+    end)
+
+    Describe(row, properties.Description)
+
+    Render(false)
+
+    return Focus.Register {
+        Frame    = row,
+        Activate = function()
+            Set(value + (increment > 0 and increment or (maximum - minimum) / 10), true)
+            if properties.OnRelease then
+                properties.OnRelease(value)
+            end
+        end,
+        Set      = function(next)
+            Set(next, true)
+        end,
+        Get      = function()
+            return value
+        end,
+        Min      = minimum,
+        Max      = maximum,
+    }
+end
+
+--=== keybind ===============================================================
+
+-- A key in one of the two shapes a keybind comes in: hold while it is down, or toggle on each press.
+-- Listening is a state the control is in rather than a dialog, so Escape cancels it and Backspace clears
+-- it - and a key another control has already claimed says so rather than being silently stolen.
+local KeyClaims = {}                                                                  -- key name -> the control that holds it
+
+local function KeyName(binding)
+    if binding == nil then
+        return "—"
+    end
+    if binding.KeyCode ~= nil then
+        return binding.KeyCode.Name
+    end
+    if binding.UserInputType ~= nil then
+        return binding.UserInputType.Name
+    end
+    return "?"
+end
+
+local function HoldsInput(binding, input)
+    if binding == nil then
+        return false
+    end
+    if binding.KeyCode ~= nil then
+        return input.KeyCode == binding.KeyCode
+    end
+    return input.UserInputType == binding.UserInputType
+end
+
+local function Keybind(properties)
+    local mode      = properties.Mode == "Hold" and "Hold" or "Toggle"
+    local value     = false
+    local bound     = nil                                                              -- claimed below, so a key this one was born with is claimed like any other
+    local listening = false
+    local holding   = false
+
+    local row = Sticker(Element {
+        ClassName       = "TextButton",
+        Parent          = properties.Parent,
+        Name            = properties.Name or properties.Caption or "Keybind",
+        Size            = properties.Size or UDim2.new(1, 0, 0, 30),
+        AutoButtonColor = false,
+        Text            = "",
+        LayoutOrder     = properties.Order or 1,
+        Position        = properties.Position,
+        ZIndex          = properties.ZIndex or 2,
+    }, { Color = properties.Color or "Well", Alpha = Theme.WellAlpha, Corner = "RowRadius", Stroke = "Line" })
+
+    Texted(row, {
+        Text     = string.upper(properties.Caption or "KEYBIND"),
+        Tint     = "Muted",
+        Size     = Theme.Type.Heading,
+        Position = UDim2.fromOffset(10, 0),
+        Size2    = UDim2.new(0.55, -14, 1, 0),
+        ZIndex   = 3,
+    })
+
+    local readout = Texted(row, {
+        ClassName = "TextButton",
+        Name      = "Readout",
+        Text      = "",
+        Mono      = true,
+        Size      = Theme.Type.Body,
+        X         = Enum.TextXAlignment.Right,
+        Position  = UDim2.fromOffset(0, 0),
+        Size2     = UDim2.new(0.45, -10, 1, 0),
+        ZIndex    = 3,
+    })
+
+    local function Show()
+        if listening then
+            readout.Text       = "PRESS A KEY"
+            readout.TextColor3 = Theme.Text
+            return
+        end
+        readout.Text       = KeyName(bound)
+        readout.TextColor3 = bound and Theme.Text or Theme.Muted
+    end
+
+    local function Announce()
+        if properties.OnChange then
+            properties.OnChange(value, bound and KeyName(bound) or nil)
+        end
+    end
+
+    local function Bind(next)
+        if bound ~= nil and KeyClaims[KeyName(bound)] == row then
+            KeyClaims[KeyName(bound)] = nil                                            -- let go of what it held
+        end
+        bound = next
+        if bound ~= nil then
+            KeyClaims[KeyName(bound)] = row                                            -- claim it, so the next control can see it is taken
+        end
+        Show()
+    end
+
+    -- Listening lasts as long as the control is in that state: one connection while it does, rather than
+    -- one per keybind for the life of the window.
+    local listeningConnection = nil
+
+    local function StopListening()
+        if listeningConnection ~= nil then
+            pcall(function()
+                listeningConnection:Disconnect()
+            end)
+            listeningConnection = nil
+        end
+        listening = false
+        Show()
+    end
+
+    local function Listen()
+        if listening then
+            return
+        end
+
+        listening = true
+        Show()
+
+        listeningConnection = UserInput.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                if input.KeyCode == Enum.KeyCode.Escape then
+                    StopListening()                                                    -- cancel: whatever was bound stays bound
+                    return
+                end
+                if input.KeyCode == Enum.KeyCode.Backspace then
+                    Bind(nil)                                                          -- clear
+                    StopListening()
+                    return
+                end
+            end
+
+            if input.UserInputType ~= Enum.UserInputType.Keyboard
+                and input.UserInputType ~= Enum.UserInputType.MouseButton1
+                and input.UserInputType ~= Enum.UserInputType.MouseButton2 then
+                return
+            end
+
+            local claim = {}
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                claim.KeyCode = input.KeyCode
+            else
+                claim.UserInputType = input.UserInputType
+            end
+
+            local taken = KeyClaims[KeyName(claim)]
+            if taken ~= nil and taken ~= row then
+                readout.Text       = "ALREADY USED"                                    -- say so rather than steal it
+                readout.TextColor3 = Theme.Muted
+                task.delay(0.9, function()
+                    if listening then
+                        Show()
+                    end
+                end)
+                return
+            end
+
+            Bind(claim)
+            StopListening()
+        end)
+    end
+
+    -- The key itself, once it is bound and nobody is listening: hold reports the press and the release,
+    -- toggle reports each press.
+    local pressConnection = UserInput.InputBegan:Connect(function(input, processed)
+        if processed or listening or bound == nil then return end
+        if not HoldsInput(bound, input) then return end
+
+        if mode == "Hold" then
+            holding = true
+            value   = true
+            Announce()
+            return
+        end
+        value = not value
+        Announce()
+    end)
+
+    local releaseConnection = UserInput.InputEnded:Connect(function(input)
+        if mode ~= "Hold" or not holding or bound == nil then return end
+        if not HoldsInput(bound, input) then return end
+        holding = false
+        value   = false
+        Announce()
+    end)
+
+    readout.MouseButton1Click:Connect(Listen)                                          -- clicking the key is how another is asked for
+
+    row.Destroying:Connect(function()
+        StopListening()
+        for _, connection in ipairs({ pressConnection, releaseConnection }) do
+            pcall(function()
+                connection:Disconnect()
+            end)
+        end
+        if bound ~= nil and KeyClaims[KeyName(bound)] == row then
+            KeyClaims[KeyName(bound)] = nil
+        end
+    end)
+
+    Describe(row, properties.Description)
+
+    if properties.CurrentKeyCode ~= nil then
+        Bind({ KeyCode = properties.CurrentKeyCode })                                  -- a key it starts with is a key it holds
+    end
+
+    Show()
+
+    return Focus.Register {
+        Frame    = row,
+        Activate = function()
+            if mode == "Toggle" then
+                value = not value
+                Announce()
+            end
+        end,
+        Set      = function(next)
+            value = next and true or false
+        end,
+        Get      = function()
+            return value
+        end,
+        SetKey   = function(key)
+            Bind(key ~= nil and { KeyCode = key } or nil)
+        end,
+        GetKey   = function()
+            return bound and bound.KeyCode or nil
+        end,
+        Listen   = Listen,
+    }
+end
+
+--=== static ================================================================
+
+-- A block of text that wraps, so a description can be read rather than truncated. A paragraph is the same
+-- text with the muted, smaller, non-bold treatment that reads as prose rather than as a label.
+local function Label(properties)
+    local frame = Element {
+        ClassName              = "Frame",
+        Parent                 = properties.Parent,
+        Name                   = properties.Name or "Label",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 0),
+        AutomaticSize          = Enum.AutomaticSize.Y,
+        LayoutOrder            = properties.Order or 1,
+        ZIndex                 = properties.ZIndex or 1,
+    }
+
+    local paragraph = properties.Paragraph == true
+    local text = Texted(frame, {
+        Name   = "Text",
+        Text   = properties.Text or "",
+        Tint   = properties.Tint or (paragraph and "Muted" or "Text"),
+        Size   = properties.Size or (paragraph and Theme.Type.Body or Theme.Type.Label),
+        Bold   = not paragraph,
+        Size2  = UDim2.new(1, 0, 0, 0),
+        ZIndex = 2,
+    })
+    text.TextWrapped   = true
+    text.AutomaticSize = Enum.AutomaticSize.Y
+    text.Size          = UDim2.new(1, 0, 0, 0)
+
+    return ElementMethods(frame, {
+        Set = function(next)
+            text.Text = tostring(next or "")
+        end,
+        Get = function()
+            return text.Text
+        end,
+    })
+end
+
+-- A bar that fills, or one that sweeps when nobody can say how far along it is. The sweeping band re-arms
+-- itself on the sweep's own duration - one timer rather than a frame loop - and stops the moment the bar
+-- is told it is done. Set takes a number for how full, or true and false for a sweep.
+local function Progress(properties)
+    local row = Element {
+        ClassName              = "Frame",
+        Parent                 = properties.Parent,
+        Name                   = properties.Name or "Progress",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 8),
+        LayoutOrder            = properties.Order or 1,
+        ZIndex                 = properties.ZIndex or 1,
+    }
+
+    local track = Sticker(Element {
+        ClassName   = "Frame",
+        Parent      = row,
+        Name        = "Track",
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position    = UDim2.new(0, 0, 0.5, 0),
+        Size        = UDim2.new(1, 0, 0, 6),
+        ZIndex      = 2,
+    }, { Color = "Line", Alpha = 0.75, Corner = 0.5 })
+
+    local fill = Sticker(Element {
+        ClassName   = "Frame",
+        Parent      = track,
+        Name        = "Fill",
+        Size        = UDim2.new(0, 0, 1, 0),
+        ZIndex      = 3,
+    }, { Color = "Text", Alpha = 0.25, Corner = 0.5 })
+
+    local band = Sticker(Element {
+        ClassName   = "Frame",
+        Parent      = track,
+        Name        = "Band",
+        Size        = UDim2.new(0.3, 0, 1, 0),
+        Position    = UDim2.new(-0.3, 0, 0, 0),
+        Visible     = false,
+        ZIndex      = 4,
+    }, { Color = "Text", Alpha = 0.4, Corner = 0.5 })
+
+    local value    = math.clamp(tonumber(properties.Value) or 0, 0, 1)
+    local sweeping = false
+
+    local function Sweep()
+        if not sweeping or row.Parent == nil then
+            return
+        end
+        band.Position = UDim2.new(-0.3, 0, 0, 0)
+        Motion.Play(band, "Sweep", { Position = UDim2.new(1, 0, 0, 0) })
+        task.delay(Motion.Specs.Sweep.Duration, Sweep)                                -- self-scheduling, and it stops when the flag does
+    end
+
+    local element = ElementMethods(row, {
+        Set = function(next)
+            if next == nil or type(next) == "boolean" then
+                sweeping     = next ~= false
+                band.Visible = sweeping
+                fill.Visible = not sweeping
+                if sweeping then
+                    Sweep()
+                end
+                return sweeping
+            end
+
+            value = math.clamp(tonumber(next) or value, 0, 1)
+            Motion.Follow(fill, "Size", UDim2.new(value, 0, 1, 0), Motion.Specs.Follow.Rate)
+            return value
+        end,
+        Get = function()
+            return sweeping and true or value
+        end,
+        Destroy = function()
+            sweeping = false                                                          -- and the timer stops asking
+        end,
+    })
+
+    element:Set(value)
+    return element
+end
 
 --=== scrolling =============================================================
 
@@ -2045,6 +3091,606 @@ local function ScrollingBody(order)
     return body
 end
 
+--=== palette ===============================================================
+
+-- What a palette can find. A script names things all over its window; this is the one list of names, and
+-- it fills itself as those things are made rather than being asked for afterwards.
+MonoUI.Actions = {}
+
+function MonoUI:AddAction(settings)
+    settings = settings or {}
+    if settings.Name == nil then
+        return nil
+    end
+
+    MonoUI.Actions[#MonoUI.Actions + 1] = {
+        Name = tostring(settings.Name),
+        Kind = settings.Kind or "action",
+        Run  = settings.Run,
+    }
+    return settings.Name
+end
+
+-- Every name worth finding: what the script registered as an action, the controls and flags that did it
+-- for themselves, and the tabs of every window that is up.
+local function Catalogue()
+    local found = {}
+
+    for _, action in ipairs(MonoUI.Actions) do
+        found[#found + 1] = action
+    end
+
+    for _, window in ipairs(App.windows) do
+        for _, tab in ipairs(window.tabs) do
+            found[#found + 1] = {
+                Name = tab.Name,
+                Kind = "tab",
+                Run  = function()
+                    window:SetVisible(true)
+                    if tab.Focus ~= nil then
+                        tab.Focus()
+                    end
+                end,
+            }
+        end
+    end
+
+    return found
+end
+
+local Palette = { frame = nil, query = nil, chosen = 1, results = {}, rows = {} }
+
+local function ClosePalette()
+    local frame = Palette.frame
+    Palette.frame = nil
+    if frame == nil then
+        return
+    end
+
+    Motion.Play(frame, "Close", { GroupTransparency = 1 })
+    task.delay(Motion.Specs.Close.Duration, function()
+        if frame.Parent ~= nil then
+            frame:Destroy()
+        end
+    end)
+end
+
+-- The list is rebuilt on every keystroke rather than filtered in place: it is eight rows at most, and
+-- rebuilding is the version that cannot drift out of step with the query.
+local function RenderPalette()
+    local query = string.lower(Palette.query.Text or "")
+    for _, row in ipairs(Palette.rows) do
+        row:Destroy()
+    end
+    Palette.rows   = {}
+    Palette.results = {}
+
+    for _, action in ipairs(Catalogue()) do
+        if query == "" or string.find(string.lower(action.Name), query, 1, true) ~= nil then
+            Palette.results[#Palette.results + 1] = action
+        end
+    end
+
+    Palette.chosen = math.clamp(Palette.chosen, 1, math.max(1, #Palette.results))
+
+    for index = 1, math.min(#Palette.results, 8) do
+        local action = Palette.results[index]
+        local row = Sticker(Element {
+            ClassName       = "TextButton",
+            Parent          = Palette.list,
+            Name            = action.Name,
+            Size            = UDim2.new(1, 0, 0, 24),
+            AutoButtonColor = false,
+            Text            = "",
+            LayoutOrder     = index,
+            ZIndex          = 2147483003,
+        }, { Color = "Row", Alpha = index == Palette.chosen and Theme.HoverAlpha or 1, Corner = "RowRadius" })
+
+        Texted(row, {
+            Text     = action.Name,
+            Size     = Theme.Type.Body,
+            Position = UDim2.fromOffset(8, 0),
+            Size2    = UDim2.new(0.7, -12, 1, 0),
+            ZIndex   = 2147483004,
+        })
+        Texted(row, {
+            Text     = string.upper(action.Kind),
+            Tint     = "Muted",
+            Size     = Theme.Type.Support,
+            X        = Enum.TextXAlignment.Right,
+            Position = UDim2.fromOffset(0, 0),
+            Size2    = UDim2.new(0.3, -8, 1, 0),
+            ZIndex   = 2147483004,
+        })
+
+        row.MouseButton1Click:Connect(function()
+            Palette.chosen = index
+            RenderPalette()
+            MonoUI:RunPalette()
+        end)
+
+        Palette.rows[#Palette.rows + 1] = row
+    end
+
+    if #Palette.results == 0 then
+        local row = Texted(Palette.list, {
+            Name   = "Nothing",
+            Text   = "Nothing by that name",
+            Tint   = "Muted",
+            Size   = Theme.Type.Body,
+            Size2  = UDim2.new(1, 0, 0, 24),
+            ZIndex = 2147483003,
+        })
+        Palette.rows[#Palette.rows + 1] = row
+    end
+end
+
+function MonoUI:RunPalette()
+    local action = Palette.results[Palette.chosen]
+    ClosePalette()
+    if action ~= nil and action.Run ~= nil then
+        action.Run()
+    end
+    return action ~= nil
+end
+
+function MonoUI:MovePalette(step)
+    Palette.chosen = math.max(1, math.min(#Palette.results, Palette.chosen + (step or 1)))
+    RenderPalette()
+    return Palette.chosen
+end
+
+function MonoUI:OpenPalette()
+    if Palette.frame ~= nil then
+        ClosePalette()
+        return false
+    end
+
+    local gui = App.gui
+    if gui == nil then
+        return false
+    end
+
+    local frame = Sticker(Element {
+        ClassName         = "CanvasGroup",
+        Parent            = gui,
+        Name              = "Palette",
+        AnchorPoint       = Vector2.new(0.5, 0),
+        Position          = UDim2.new(0.5, 0, 0, 120),
+        Size              = UDim2.fromOffset(420, 0),
+        AutomaticSize     = Enum.AutomaticSize.Y,
+        GroupTransparency = 1,
+        ZIndex            = 2147483000,
+    }, { Color = "Surface", Alpha = Lifted("overlay", Theme.WindowAlpha), Corner = "Radius", Stroke = "Outline", Rim = LiftedRim("overlay"), Glass = true,
+        Padding = { 10, 10, 10, 10 }, Gap = { Padding = 6 } })
+
+    Palette.frame = frame
+    Palette.query = Input {
+        Parent           = frame,
+        Name             = "Query",
+        Size             = UDim2.new(1, 0, 0, 28),
+        PlaceholderText  = "Search settings and tabs",
+        X                = Enum.TextXAlignment.Left,
+        Order            = 1,
+        ZIndex           = 2147483002,
+        OnChange         = function() RenderPalette() end,                            -- every keystroke narrows the list
+        OnSubmit         = function() MonoUI:RunPalette() end,
+        SubmitOnEnter    = true,
+    }
+
+    local list = Element {
+        ClassName     = "Frame",
+        Parent        = frame,
+        Name          = "Results",
+        BackgroundTransparency = 1,
+        Size          = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        LayoutOrder   = 2,
+        ZIndex        = 2147483002,
+    }
+    Element { ClassName = "UIListLayout", Parent = list, Name = "Layout", Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }
+    Palette.list = list
+    Palette.chosen = 1
+
+    -- While the palette is up it owns Escape, the arrows and Return, and the letters are its query rather
+    -- than anybody's type-ahead: it is the layer slot, so there can only be one of it.
+    Focus.Claim {
+        Dismiss  = ClosePalette,
+        Contains = function(position)
+            return Inside(frame, position)
+        end,
+        Key      = function(keyCode)
+            if keyCode == Enum.KeyCode.Down then
+                MonoUI:MovePalette(1)
+                return true
+            end
+            if keyCode == Enum.KeyCode.Up then
+                MonoUI:MovePalette(-1)
+                return true
+            end
+            if keyCode == Enum.KeyCode.Return then
+                MonoUI:RunPalette()
+                return true
+            end
+            return false
+        end,
+    }
+
+    Palette.query:CaptureFocus()                                                     -- the caret belongs in the query, not on a control
+    RenderPalette()
+    Motion.Play(frame, "Panel", { GroupTransparency = 0 })
+    return true
+end
+
+--=== history ===============================================================
+
+-- What changed, so it can be changed back. Bounded, because a script left running overnight should not
+-- accumulate a memoir, and suppressed while it is being applied, or undoing would record itself.
+local History = { past = {}, future = {}, applying = false, seen = {}, Limit = 40 }
+
+function History.Push(flag, before, after)
+    History.past[#History.past + 1] = { flag = flag, before = before, after = after }
+    if #History.past > History.Limit then
+        table.remove(History.past, 1)
+    end
+    History.future = {}
+end
+
+local function UndoStep(step, value, notice)
+    local entry = MonoUI.Flags[step.flag]
+    if entry == nil or entry.Set == nil then
+        return false
+    end
+
+    History.applying = true
+    entry.Set(value)
+    History.applying = false
+
+    MonoUI:Notify(string.format("%s %s", notice, tostring(step.flag)), "info", 2)
+    return true
+end
+
+function MonoUI:Undo()
+    local step = table.remove(History.past)
+    if step == nil then
+        return false
+    end
+    UndoStep(step, step.before, "Undid")
+    History.future[#History.future + 1] = step
+    return true
+end
+
+function MonoUI:Redo()
+    local step = table.remove(History.future)
+    if step == nil then
+        return false
+    end
+    UndoStep(step, step.after, "Redid")
+    History.past[#History.past + 1] = step
+    return true
+end
+
+--=== context menu ==========================================================
+
+-- A small menu where the control is: as many rows as it is given, each a thing to do. It takes the layer
+-- slot while it is up, so Escape and a press outside both put it away, and one of them cannot be open on
+-- top of another.
+local function ContextMenu(anchor, items)
+    local gui = App.gui
+    if gui == nil then
+        return nil
+    end
+
+    local menu = Sticker(Element {
+        ClassName = "CanvasGroup",
+        Parent    = gui,
+        Name      = "Menu",
+        Position  = UDim2.fromOffset(anchor.AbsolutePosition.X, anchor.AbsolutePosition.Y + 12),
+        Size      = UDim2.fromOffset(150, #items * 24 + 8),
+        ZIndex    = 2147483000,
+    }, { Color = "Surface", Alpha = Lifted("overlay", Theme.MenuAlpha), Corner = "RowRadius", Stroke = "Line", Rim = LiftedRim("overlay"), Glass = true, Padding = { 4, 4, 4, 4 } })
+    Element { ClassName = "UIListLayout", Parent = menu, Name = "Layout", Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }
+
+    for index, item in ipairs(items) do
+        local row = Sticker(Element {
+            ClassName       = "TextButton",
+            Parent          = menu,
+            Name            = item.Name,
+            Size            = UDim2.new(1, 0, 0, 22),
+            AutoButtonColor = false,
+            Text            = "",
+            LayoutOrder     = index,
+            ZIndex          = 2147483001,
+        }, { Color = "Row", Alpha = 1, Corner = "RowRadius" })
+        Texted(row, { Text = item.Name, Size = Theme.Type.Body, Position = UDim2.fromOffset(8, 0), Size2 = UDim2.new(1, -16, 1, 0), ZIndex = 2147483002 })
+        Hoverable(row, RowLooks)
+
+        row.MouseButton1Click:Connect(function()
+            Focus.Dismiss()                                                          -- the menu goes first, so what it does is not undone by closing it
+            if item.Run ~= nil then
+                item.Run()
+            end
+        end)
+    end
+
+    Focus.Claim {
+        Dismiss  = function()
+            if menu.Parent ~= nil then
+                menu:Destroy()
+            end
+        end,
+        Contains = function(position)
+            return Inside(menu, position)
+        end,
+    }
+
+    return menu
+end
+
+--=== profiles ==============================================================
+
+-- A profile is every flag's value written down under a name, which is what a script's settings are when you
+-- look at them all at once. Exporting is the same table as text, so a profile can be sent to someone else or
+-- pasted into an issue; importing goes through each element's Set, so callbacks run exactly as if the values
+-- had been chosen by hand.
+MonoUI.Profiles = {}
+
+local function Values()
+    local data = {}
+    for flag, entry in pairs(MonoUI.Flags) do
+        data[flag] = entry.Get()
+    end
+    return data
+end
+
+function MonoUI:SaveProfile(name)
+    if name == nil or name == "" then
+        return false
+    end
+
+    MonoUI.Profiles[tostring(name)] = Values()
+    MonoUI:Notify(string.format("Saved profile %s", tostring(name)), "success", 2)
+    return true
+end
+
+function MonoUI:LoadProfile(name)
+    local profile = MonoUI.Profiles[tostring(name)]
+    if type(profile) ~= "table" then
+        return false
+    end
+
+    for flag, value in pairs(profile) do
+        local entry = MonoUI.Flags[flag]
+        if entry ~= nil then
+            entry.Set(value)                                                          -- through the element, so its callback runs
+        end
+    end
+
+    MonoUI:Notify(string.format("Loaded profile %s", tostring(name)), "info", 2)
+    return true
+end
+
+function MonoUI:DeleteProfile(name)
+    if MonoUI.Profiles[tostring(name)] == nil then
+        return false
+    end
+
+    MonoUI.Profiles[tostring(name)] = nil
+    return true
+end
+
+function MonoUI:ListProfiles()
+    local names = {}
+    for name in pairs(MonoUI.Profiles) do
+        names[#names + 1] = name
+    end
+    table.sort(names)
+    return names
+end
+
+function MonoUI:ExportProfile(name)
+    local profile = MonoUI.Profiles[tostring(name)]
+    if profile == nil then
+        return nil
+    end
+
+    local ok, encoded = pcall(function()
+        return HttpService:JSONEncode(profile)
+    end)
+    if not ok then
+        return nil
+    end
+
+    if type(setclipboard) == "function" then
+        pcall(setclipboard, encoded)                                                  -- where someone can paste it from
+    end
+    MonoUI:Notify(string.format("Exported %s to the clipboard", tostring(name)), "success", 2)
+    return encoded
+end
+
+function MonoUI:ImportProfile(text, name)
+    if type(text) ~= "string" then
+        return false
+    end
+
+    local ok, decoded = pcall(function()
+        return HttpService:JSONDecode(text)
+    end)
+    if not ok or type(decoded) ~= "table" then
+        MonoUI:Notify("That is not a profile", "error", 3)
+        return false
+    end
+
+    MonoUI.Profiles[tostring(name or "imported")] = decoded
+    MonoUI:Notify(string.format("Imported %s", tostring(name or "imported")), "success", 2)
+    return true
+end
+
+-- A question with two answers, drawn as the overlay a question deserves. It takes the layer slot while it is
+-- up, so Escape, a press outside, and the No button all mean the same thing - and Yes is the only way through.
+function MonoUI:Confirm(message, onYes)
+    local gui = App.gui
+    if gui == nil then
+        return false
+    end
+
+    local asking = Sticker(Element {
+        ClassName         = "CanvasGroup",
+        Parent            = gui,
+        Name              = "Confirm",
+        AnchorPoint       = Vector2.new(0.5, 0.5),
+        Position          = UDim2.fromScale(0.5, 0.5),
+        Size              = UDim2.fromOffset(300, 0),
+        AutomaticSize     = Enum.AutomaticSize.Y,
+        GroupTransparency = 1,
+        ZIndex            = 2147483600,
+    }, { Color = "Surface", Alpha = Lifted("overlay", Theme.MenuAlpha), Corner = "Radius", Stroke = "Outline",
+        Rim = LiftedRim("overlay"), Glass = true, Padding = { 12, 12, 12, 12 }, Gap = { Padding = 10 } })
+
+    Texted(asking, {
+        Name   = "Message",
+        Text   = tostring(message or "Are you sure?"),
+        Size   = Theme.Type.Body,
+        Size2  = UDim2.new(1, 0, 0, 18),
+        ZIndex = 2147483601,
+    })
+
+    local answers = Element {
+        ClassName              = "Frame",
+        Parent                 = asking,
+        Name                   = "Answers",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 28),
+        ZIndex                 = 2147483601,
+    }
+    Element {
+        ClassName     = "UIGridLayout",
+        Parent        = answers,
+        Name          = "Columns",
+        CellSize      = UDim2.new(0.5, -3, 0, 28),
+        CellPadding   = UDim2.new(0, 6, 0, 0),
+        SortOrder     = Enum.SortOrder.LayoutOrder,
+    }
+
+    local function Close()
+        Focus.Dismiss()
+        if asking.Parent ~= nil then
+            asking:Destroy()
+        end
+    end
+
+    Button {
+        Parent  = answers,
+        Name    = "Yes",
+        Caption = "Yes",
+        Order   = 1,
+        Color   = "Text",
+        Tint    = "Invert",
+        OnClick = function()
+            Close()
+            if onYes ~= nil then
+                onYes()
+            end
+        end,
+    }
+    Button {
+        Parent  = answers,
+        Name    = "No",
+        Caption = "No",
+        Order   = 2,
+        OnClick = Close,
+    }
+
+    Focus.Claim {
+        Dismiss  = Close,
+        Contains = function(position)
+            return Inside(asking, position)
+        end,
+    }
+
+    Motion.Play(asking, "Panel", { GroupTransparency = 0 })
+    return true
+end
+
+-- Everything back to what the script gave it, which is a large enough thing to happen to ask about first.
+function MonoUI:ResetAll(confirm)
+    if confirm ~= false then
+        return MonoUI:Confirm("Reset every setting?", function()
+            MonoUI:ResetAll(false)
+        end)
+    end
+
+    for _, entry in pairs(MonoUI.Flags) do
+        if entry.Default ~= nil and entry.Set ~= nil then
+            entry.Set(entry.Default)
+        end
+    end
+
+    MonoUI:Notify("Every setting is back where it started", "info", 3)
+    return true
+end
+
+-- The pinned controls, as a compact plate of their own: the value each one holds now, and a row that takes
+-- you to it. It is made on demand rather than always, because most scripts never pin anything.
+function MonoUI:CreatePinned(settings)
+    settings = settings or {}
+
+    local plate = MonoUI:CreatePlate {
+        Name    = settings.Name or "PINNED",
+        Width   = settings.Width or 236,
+        Hint    = "RIGHT CLICK A SETTING TO PIN IT",
+        Position = settings.Position or UDim2.fromOffset(80, 120),
+    }
+
+    local rows = {}
+    local function Refresh()
+        for _, row in ipairs(rows) do
+            row:Destroy()
+        end
+        rows = {}
+
+        for _, flag in ipairs(MonoUI.Pins) do
+            local entry = MonoUI.Flags[flag]
+            if entry ~= nil then
+                local row = plate:CreateRow(26)
+                Texted(row, {
+                    Text     = tostring(flag),
+                    Size     = Theme.Type.Body,
+                    Position = UDim2.fromOffset(2, 0),
+                    Size2    = UDim2.new(0.6, -4, 1, 0),
+                    ZIndex   = 3,
+                })
+                local readout = Texted(row, {
+                    Text     = tostring(entry.Get()),
+                    Tint     = "Muted",
+                    Size     = Theme.Type.Body,
+                    X        = Enum.TextXAlignment.Right,
+                    Size2    = UDim2.new(0.4, -4, 1, 0),
+                    ZIndex   = 3,
+                })
+                Fonted(readout, false, true)                                          -- a value that does not jitter as it changes
+
+                row.BackgroundTransparency = 1
+                rows[#rows + 1] = Texted(row, { Text = "", Size = Theme.Type.Support, Size2 = UDim2.new(0, 0, 0, 0) })
+            end
+        end
+
+        if #rows == 0 then
+            rows[1] = Texted(plate.body, {
+                Text   = "Nothing pinned yet",
+                Tint   = "Muted",
+                Size   = Theme.Type.Support,
+                Size2  = UDim2.new(1, 0, 0, 20),
+                ZIndex = 3,
+            })
+        end
+    end
+
+    Refresh()
+    plate.Refresh = Refresh
+    return plate
+end
+
 --=== flags =================================================================
 
 MonoUI.Flags = {}
@@ -2053,6 +3699,10 @@ MonoUI.Flags = {}
 -- so the guard here is what keeps a flagless element from indexing the table with nil.
 local function RegisterFlag(flag, entry)
     if flag == nil then return end
+
+    if entry.Get ~= nil then
+        entry.Default = entry.Get()                                                      -- where a reset goes back to, and what a mark compares against
+    end
     MonoUI.Flags[flag] = entry
 end
 
@@ -2110,10 +3760,12 @@ function MonoUI:SaveConfiguration()
                 layout[tostring(surface.settings.Name or "window")] = {
                     X = plate.Position.X.Offset,
                     Y = plate.Position.Y.Offset,
+                    W = plate.Size.X.Offset,                                             -- and how wide the grip was left
                 }
             end
         end
     end
+    layout["$scale"] = Theme.Scale or 1                                                -- how big the script was left, saved beside where it was left
     data[LayoutKey] = layout
 
     local ok, encoded = pcall(function()
@@ -2153,7 +3805,14 @@ function MonoUI:LoadConfiguration()
                 if plate ~= nil and type(where) == "table" and type(where.X) == "number" and type(where.Y) == "number" then
                     plate.Position = UDim2.new(plate.Position.X.Scale, where.X, plate.Position.Y.Scale, where.Y)
                 end
+                if plate ~= nil and type(where) == "table" and type(where.W) == "number" then
+                    plate.Size = UDim2.fromOffset(math.clamp(where.W, Theme.MinWidth or 240, Theme.MaxWidth or 1200), 0)
+                end
             end
+        end
+
+        if type(layout["$scale"]) == "number" then
+            MonoUI:SetScale(layout["$scale"])                                        -- and how big it was left
         end
     end
 
@@ -2171,11 +3830,96 @@ function MonoUI:GetFlag(flag)
     return entry.Get()
 end
 
+MonoUI.Pins = {}
+
+-- A flag goes back to what its script gave it, through the element, so the callback runs and the history
+-- records it exactly as any other change would be.
+function MonoUI:ResetFlag(flag)
+    local entry = MonoUI.Flags[flag]
+    if entry == nil or entry.Default == nil then
+        return false
+    end
+
+    entry.Set(entry.Default)
+    return true
+end
+
+function MonoUI:CopyFlag(flag)
+    local entry = MonoUI.Flags[flag]
+    if entry == nil or type(setclipboard) ~= "function" then
+        return false
+    end
+
+    pcall(setclipboard, tostring(entry.Get()))
+    MonoUI:Notify(string.format("Copied %s", tostring(flag)), "success", 2)
+    return true
+end
+
+function MonoUI:PinFlag(flag, on)
+    local index = table.find(MonoUI.Pins, flag)
+    if on == false then
+        if index ~= nil then
+            table.remove(MonoUI.Pins, index)
+        end
+        return false
+    end
+
+    if index == nil then
+        MonoUI.Pins[#MonoUI.Pins + 1] = flag
+        MonoUI:Notify(string.format("Pinned %s", tostring(flag)), "success", 2)
+    end
+    return true
+end
+
+-- A control that is not where its script left it says so in the corner, and offers to go back: the mark is
+-- a small filled dot, and the menu behind a right click is reset, copy and pin.
+local function WatchFlag(flag, entry, element)
+    local frame = element.Frame
+    if frame == nil then
+        return
+    end
+
+    local mark = Glyphs.dot(frame, 5, "Muted")
+    mark.AnchorPoint = Vector2.new(1, 0)
+    mark.Position    = UDim2.new(1, -4, 0, 5)
+    mark.Visible     = false
+
+    entry.Mark = function()
+        if frame.Parent == nil then
+            return
+        end
+        mark.Visible = entry.Default ~= nil and entry.Get() ~= entry.Default
+    end
+
+    frame.MouseButton2Click:Connect(function()
+        ContextMenu(frame, {
+            { Name = "Reset",      Run = function() MonoUI:ResetFlag(flag) end },
+            { Name = "Copy value", Run = function() MonoUI:CopyFlag(flag) end },
+            { Name = table.find(MonoUI.Pins, flag) and "Unpin" or "Pin",
+              Run = function() MonoUI:PinFlag(flag, table.find(MonoUI.Pins, flag) == nil) end },
+        })
+    end)
+
+    entry.Mark()
+end
+
 --=== regions ===============================================================
+
+-- The named creators, so the one place that wraps them knows which of a region's functions build elements
+-- and which of them are bookkeeping.
+local CREATORS = {
+    CreateToggle = true, CreateDropdown = true, CreateInput = true, CreateButton = true,
+    CreateSlider = true, CreateKeybind = true, CreateLabel = true, CreateParagraph = true,
+    CreateProgress = true, CreateMultiSelect = true,
+}
 
 -- A region is a body: a vertical list of rows with its own ordering, which is what both a
 -- tab and a plate hand out. The element methods are the named, flag-registering wrappers
 -- around the controls above, so a caller can mix them with hand-placed primitives freely.
+-- Every control a region made, so a density change can find them again: a control is born at whatever height
+-- the theme said at the time, and only a record of them makes it possible to say otherwise afterwards.
+local Sized = setmetatable({}, { __mode = "k" })
+
 local function CreateRegion(frame)
     local region = { frame = frame, order = 0 }
 
@@ -2194,6 +3938,24 @@ local function CreateRegion(frame)
         if settings.Callback then
             settings.Callback(value)
         end
+
+        -- Every change a control makes - a pointer, a saved value, a reset - ends up here, so this is where
+        -- the history hears about it. It keeps the last value it saw for each flag, which is what an undo
+        -- goes back to; a change the history is itself making is not recorded.
+        if settings.Flag ~= nil then
+            local entry = MonoUI.Flags[settings.Flag]
+            local now   = entry ~= nil and entry.Get ~= nil and entry.Get() or value
+            local seen  = History.seen[settings.Flag]
+
+            if not History.applying and seen ~= nil and seen ~= now then
+                History.Push(settings.Flag, seen, now)
+            end
+            History.seen[settings.Flag] = now
+            if entry ~= nil and entry.Mark ~= nil then
+                entry.Mark()                                                         -- a control that has been moved from its default says so
+            end
+        end
+
         ScheduleSave()
     end
 
@@ -2203,7 +3965,7 @@ local function CreateRegion(frame)
     end
 
     function region:CreateRow(height)
-        return Row(region.frame, region:Next(), height or 28)
+        return Row(region.frame, region:Next(), height or Theme.RowHeight or 28)
     end
 
     function region:Columns(row, count, gap, height)
@@ -2303,7 +4065,17 @@ local function CreateRegion(frame)
                 Changed(settings, value)
             end,
         })
-        return box
+        -- The box is returned as an element, with the methods its own Set and Get stand for: an instance
+        -- cannot carry them, so the element carries the instance instead.
+        return ElementMethods(box, {
+            Set = function(value)
+                box.Text = tostring(value)
+                Changed(settings, value)
+            end,
+            Get = function()
+                return box.Text
+            end,
+        })
     end
 
     function region:CreateButton(settings)
@@ -2318,6 +4090,55 @@ local function CreateRegion(frame)
         }
     end
 
+    function region:CreateSlider(settings)
+        settings = settings or {}
+        local element = Slider {
+            Parent      = region.frame,
+            Name        = settings.Name,
+            Caption     = settings.Name,
+            Order       = region:Next(),
+            Min         = settings.Min,
+            Max         = settings.Max or settings.MaxValue,
+            Increment   = settings.Increment or settings.Step,
+            Suffix      = settings.Suffix,
+            Value       = settings.CurrentValue or settings.Value,
+            OnRelease   = settings.Callback,
+            Description = settings.Description,
+        }
+        RegisterFlag(settings.Flag, {
+            Type = "Slider",
+            Get  = element.Get,
+            Set  = function(next)
+                element.Set(next)
+                Changed(settings, next)
+            end,
+        })
+        return element
+    end
+
+    function region:CreateKeybind(settings)
+        settings = settings or {}
+        local element = Keybind {
+            Parent         = region.frame,
+            Name           = settings.Name,
+            Caption        = settings.Name,
+            Order          = region:Next(),
+            Mode           = settings.Mode,
+            CurrentKeyCode = settings.CurrentKeyCode or settings.Key,
+            OnChange       = settings.Callback,
+            Description    = settings.Description,
+        }
+        RegisterFlag(settings.Flag, {
+            Type = "Keybind",
+            Get  = element.GetKey,
+            Set  = function(key)
+                element.SetKey(key)
+                Changed(settings, key)
+            end,
+        })
+        return element
+    end
+
     -- A hand-placed control joins the same list, so mixing the two styles keeps the order
     -- the caller wrote them in.
     function region:Place(properties)
@@ -2325,6 +4146,124 @@ local function CreateRegion(frame)
         properties.Parent = region.frame
         properties.Order  = region:Next()
         return properties
+    end
+
+    function region:CreateLabel(settings)
+        settings = settings or {}
+        return Label {
+            Parent      = region.frame,
+            Name        = settings.Name,
+            Text        = settings.Text or settings.Name,
+            Order       = region:Next(),
+            Tint        = settings.Tint,
+            Size        = settings.Size,
+            Description = settings.Description,
+        }
+    end
+
+    function region:CreateParagraph(settings)
+        settings = settings or {}
+        return Label {
+            Parent      = region.frame,
+            Name        = settings.Name,
+            Text        = settings.Text or settings.Name,
+            Paragraph   = true,
+            Order       = region:Next(),
+            Tint        = settings.Tint,
+            Size        = settings.Size,
+            Description = settings.Description,
+        }
+    end
+
+    function region:CreateProgress(settings)
+        settings = settings or {}
+        local element = Progress {
+            Parent  = region.frame,
+            Name    = settings.Name,
+            Order   = region:Next(),
+            Value   = settings.CurrentValue or settings.Value,
+        }
+
+        RegisterFlag(settings.Flag, {
+            Type = "Progress",
+            Get  = element.Get,
+            Set  = function(next)
+                element.Set(next)
+                Changed(settings, next)
+            end,
+        })
+        return element
+    end
+
+    function region:CreateMultiSelect(settings)
+        settings = settings or {}
+        local element = Select {
+            Parent      = region.frame,
+            Name        = settings.Name,
+            Caption     = settings.Name,
+            Order       = region:Next(),
+            Options     = settings.Options,
+            Multi       = true,
+            Value       = settings.CurrentOption,
+            OnSelect    = function(chosen)
+                Changed(settings, chosen)
+            end,
+            Description = settings.Description,
+        }
+
+        RegisterFlag(settings.Flag, {
+            Type = "MultiSelect",
+            Get  = element.Get,
+            Set  = function(next)
+                element.Set(next)
+            end,
+        })
+        return element
+    end
+
+    -- Every named creator answers with an element, whether the control it built was already a table or a
+    -- bare instance: one place to promise it rather than ten places to remember.
+    for key, wrapped in pairs(region) do
+        if type(wrapped) == "function" and CREATORS[key] then
+            region[key] = function(self, settings)
+                local built = wrapped(self, settings)
+                if built == nil then
+                    return nil
+                end
+                if built.SetVisible ~= nil then
+                    return built                                                      -- already an element
+                end
+                -- A table that already carries a Frame has methods of its own - a keybind's GetKey, a
+                -- slider's Min and Max - so the element keeps them. An instance has none to keep.
+                local element = ElementMethods(built.Frame or built, built.Frame ~= nil and built or { Set = built.Set, Get = built.Get })
+                if element.Frame ~= nil then
+                    Sized[element.Frame] = true                                          -- a control the density walk can find again
+                end
+
+                -- Everything a script names is findable by that name, which is what the palette searches:
+                -- one place to promise it, rather than every creator remembering to.
+                if type(settings) == "table" and settings.Name ~= nil and element.Frame ~= nil then
+                    MonoUI:AddAction {
+                        Name = tostring(settings.Name),
+                        Kind = settings.Flag and "flag" or "control",
+                        Run  = function()
+                            Focus.Set(element)
+                            if element.Frame.Parent ~= nil then
+                                element.Frame.Visible = true
+                            end
+                        end,
+                    }
+                end
+
+                -- And a flag's control watches its own value: a mark when it has been moved from where the
+                -- script left it, and a menu behind a right click to put it back.
+                if type(settings) == "table" and settings.Flag ~= nil and MonoUI.Flags[settings.Flag] ~= nil then
+                    WatchFlag(settings.Flag, MonoUI.Flags[settings.Flag], element)
+                end
+
+                return element
+            end
+        end
     end
 
     return region
@@ -2351,6 +4290,7 @@ local function EnsureGui(name)
         DisplayOrder   = 2147483000,
         ZIndexBehavior = Enum.ZIndexBehavior.Global,
     }
+    Element { ClassName = "UIScale", Parent = App.gui, Name = "UiScale", Scale = Theme.Scale or 1 }
     return App.gui
 end
 
@@ -2420,9 +4360,23 @@ local function ToastStack()
     return stack
 end
 
+-- Levels, shown by a glyph and by the weight of the words rather than by a colour the palette does not
+-- have. That is the whole monochrome rule for status in one table.
+local LEVELS = {
+    success = { Glyph = "check",   Bold = false },
+    info    = { Glyph = "info",    Bold = false },
+    warning = { Glyph = "warning", Bold = true  },
+    error   = { Glyph = "cross",   Bold = true  },
+}
+
+function MonoUI:Notify(message, level, lifetime)
+    local look = LEVELS[level or "info"] or LEVELS.info
+    return MonoUI:Toast(message, "Text", lifetime, look)
+end
+
 -- A message, for as long as it is worth reading. A group, so the whole thing fades with one property,
 -- and the label decides how wide it is.
-function MonoUI:Toast(message, tint, lifetime)
+function MonoUI:Toast(message, tint, lifetime, level)
     local stack = ToastStack()
     if stack == nil then
         return nil
@@ -2451,7 +4405,9 @@ function MonoUI:Toast(message, tint, lifetime)
         GroupTransparency = 1,
         LayoutOrder       = ToastOrder,
         ZIndex            = 2147483001,
-    }, { Color = "Surface", Alpha = Theme.WindowAlpha, Corner = "RowRadius", Stroke = "Outline", Rim = true, Glass = true, Padding = { 6, 12, 6, 12 } })
+    }, { Color = "Surface", Alpha = Lifted("overlay", Theme.WindowAlpha), Corner = "RowRadius", Stroke = "Outline", Rim = LiftedRim("overlay"), Glass = true,
+        Padding = level and { 6, 12, 6, 34 } or { 6, 12, 6, 12 } })                   -- room for a glyph, when there is one
+    Glass(toast, "overlay")
 
     local label = Texted(toast, {
         Name   = "Label",
@@ -2462,6 +4418,16 @@ function MonoUI:Toast(message, tint, lifetime)
         ZIndex = 2147483002,
     })
     label.AutomaticSize = Enum.AutomaticSize.X
+
+    -- A level is a glyph and a weight rather than a colour: the palette has none to spare, and a shape and
+    -- a weight survive being colour-blind, printed, or read at a glance across the screen.
+    if level ~= nil then
+        local glyph = Glyphs[level.Glyph or "info"](toast, 14, "Text")
+        glyph.Position = UDim2.fromOffset(16, 15)
+        if level.Bold then
+            Fonted(label, true)
+        end
+    end
 
     Motion.Play(toast, "Toast", { GroupTransparency = 0 })
     task.delay(lifetime or TOAST_LIFE, function()
@@ -2480,6 +4446,159 @@ function MonoUI:Toast(message, tint, lifetime)
     end
 
     return toast
+end
+
+--=== contrast ==============================================================
+
+-- The arithmetic WCAG uses for contrast, in the module rather than in a note beside it, so the palette
+-- can be checked instead of assumed. The plate is translucent, so the colour under the text is the
+-- plate composited over whatever the game is showing - and the worst game to be over is a white one.
+local function Channel(value)
+    local c = value / 255
+    if c <= 0.03928 then
+        return c / 12.92
+    end
+    return ((c + 0.055) / 1.055) ^ 2.4
+end
+
+local function Luminance(rgb)
+    return 0.2126 * Channel(rgb[1]) + 0.7152 * Channel(rgb[2]) + 0.0722 * Channel(rgb[3])
+end
+
+local function Ratio(one, two)
+    local a, b = Luminance(one), Luminance(two)
+    if a < b then
+        a, b = b, a
+    end
+    return (a + 0.05) / (b + 0.05)
+end
+
+local function Over(front, alpha, back)
+    return {
+        front[1] * alpha + back[1] * (1 - alpha),
+        front[2] * alpha + back[2] * (1 - alpha),
+        front[3] * alpha + back[3] * (1 - alpha),
+    }
+end
+
+local function Channels(color)
+    return { color.R * 255, color.G * 255, color.B * 255 }
+end
+
+-- What the palette measures at its worst: the bottom of the plate (where the sheen has thinned it most)
+-- over a black, a mid-gray and a white game. Text wants 4.5:1, a component edge 3:1.
+function MonoUI:Contrast()
+    local alpha = (1 - (Theme.WindowAlpha or 0)) * (1 - (Theme.SheenMax or 0))
+    local text  = Channels(Theme.Text)
+    local muted = Channels(Theme.Muted)
+    local worst = { Text = math.huge, Muted = math.huge, Line = math.huge }
+
+    for _, back in ipairs({ { 0, 0, 0 }, { 128, 128, 128 }, { 255, 255, 255 } }) do
+        local plate = Over(Channels(Theme.Surface), alpha, back)
+        local line  = Over({ 255, 255, 255 }, 1 - (Theme.LineAlpha or 1), plate)
+
+        worst.Text  = math.min(worst.Text,  Ratio(text, plate))
+        worst.Muted = math.min(worst.Muted, Ratio(muted, plate))
+        worst.Line  = math.min(worst.Line,  Ratio(line, plate))
+    end
+    return worst
+end
+
+--=== legibility ============================================================
+
+-- A preset writes itself into the theme, so everything made from here on is built to it, and then walks
+-- what is already on screen: the surfaces the game shows through, the muted text and the hairlines are
+-- the three things the contrast of the whole window rests on.
+function MonoUI:SetLegibility(name)
+    local preset = Theme.Presets[name]
+    if preset == nil then
+        return nil
+    end
+
+    for key, value in pairs(preset) do
+        Theme[key] = value
+    end
+    Theme.Legibility = name
+
+    for surface in pairs(GlassSurfaces) do
+        if surface.Parent ~= nil then
+            Motion.Play(surface, "Panel", { BackgroundTransparency = Lifted(LevelOf(surface), Theme.WindowAlpha) })
+            local sheen = surface:FindFirstChild("Sheen")
+            if sheen ~= nil then
+                sheen.Transparency = SheenSequence()                             -- a gradient is a sequence, not a number: set, not tweened
+            end
+        end
+    end
+
+    for label in pairs(MutedLabels) do
+        if label.Parent ~= nil then
+            Motion.Play(label, "Panel", { TextColor3 = Theme.Muted })
+        end
+    end
+
+    for stroke in pairs(LineStrokes) do
+        if stroke.Parent ~= nil then
+            Motion.Play(stroke, "Panel", { Transparency = Theme.LineAlpha })
+        end
+    end
+
+    if App.blur ~= nil and App.blur.Parent ~= nil then
+        App.blur.Enabled = (Theme.Blur or 0) > 0                                 -- an opaque plate has nothing behind it to blur
+    end
+
+    if MonoUI.Debug then
+        local worst = MonoUI:Contrast()
+        Report(string.format("legibility %s · worst case: text %.2f:1, muted %.2f:1, hairline %.2f:1",
+            name, worst.Text, worst.Muted, worst.Line))
+    end
+
+    return name
+end
+
+function MonoUI:GetLegibility()
+    return Theme.Legibility
+end
+
+-- The one setting a player is most likely to want mid-game, as a shortcut that remembers what to go
+-- back to. High contrast is the solid preset: no glass left for the game to show through.
+local ContrastReturn = nil
+
+function MonoUI:SetHighContrast(on)
+    if on then
+        ContrastReturn = ContrastReturn or Theme.Legibility
+        return MonoUI:SetLegibility("Solid")
+    end
+
+    local back = ContrastReturn or "Balanced"
+    ContrastReturn = nil
+    return MonoUI:SetLegibility(back)
+end
+
+function MonoUI:GetHighContrast()
+    return Theme.Legibility == "Solid"
+end
+
+-- Everything the library draws lives in one gui, so one scale on that gui is the whole UI scale. The
+-- window positions are offsets, and a scale scales those too, which is the only reason it works at all.
+function MonoUI:SetScale(scale)
+    Theme.Scale = math.clamp(tonumber(scale) or 1, 0.5, 2)
+
+    local gui = App.gui
+    if gui == nil then
+        return Theme.Scale
+    end
+
+    local hud = gui:FindFirstChild("UiScale")
+    if hud == nil then
+        hud = Element { ClassName = "UIScale", Parent = gui, Name = "UiScale" }
+    end
+    hud.Scale = Theme.Scale                                                      -- a size, not a movement: set, not tweened
+
+    return Theme.Scale
+end
+
+function MonoUI:GetScale()
+    return Theme.Scale or 1
 end
 
 local function EnsureBlur(settings)
@@ -2791,6 +4910,404 @@ local function UnregisterSurface(surface)
     SyncEffects()
 end
 
+-- Which plate is in front. Every press on one brings it forward, so a stack can be sorted by touching
+-- whichever you want to read; the range stops well short of the overlays, which belong above all of them.
+local FrontPlate = 1
+
+local function Raise()
+    FrontPlate = FrontPlate + 1
+    if FrontPlate > 60 then
+        FrontPlate = 2
+    end
+    return FrontPlate
+end
+
+--=== density ===============================================================
+
+-- The space scale as the theme declares it, kept so that a density change multiplies that rather than an
+-- already-multiplied one - otherwise two changes in a row would compound and the third would be nonsense.
+local BaseSpace = nil
+
+function MonoUI:SetDensity(name)
+    local look = Theme.Density[tostring(name or "comfortable")]
+    if look == nil then
+        return nil
+    end
+
+    if BaseSpace == nil then
+        BaseSpace = {}
+        for key, value in pairs(Theme.Space) do
+            BaseSpace[key] = value
+        end
+    end
+
+    for key, value in pairs(BaseSpace) do
+        Theme.Space[key] = math.floor(value * (look.Scale or 1) + 0.5)
+    end
+    Theme.Space.Gap = look.Gap or Theme.Space.Gap                                    -- a finger wants a gap it can miss between, not a scaled one
+    Theme.RowHeight     = look.Row or Theme.RowHeight
+    Theme.ControlHeight = (look.Row or Theme.RowHeight) + 2
+    Theme.DensityName   = tostring(name or "comfortable")
+
+    -- What is already up is resized from the record of what the region made, and the rows and layouts are found
+    -- by the names the module gives them, which is what makes this read as a rule rather than a guess.
+    for frame in pairs(Sized) do
+        if frame.Parent ~= nil then
+            frame.Size = UDim2.new(frame.Size.X.Scale, frame.Size.X.Offset, 0, Theme.ControlHeight)
+        end
+    end
+    for surface in pairs(GlassSurfaces) do
+        if surface.Parent ~= nil then
+            for _, part in ipairs(surface:GetDescendants()) do
+                if part.Name == "Row" then
+                    part.Size = UDim2.new(1, 0, 0, Theme.RowHeight)
+                elseif part.ClassName == "UIListLayout" and part.Name == "Layout" then
+                    part.Padding = UDim.new(0, Theme.Space.Gap)
+                end
+            end
+        end
+    end
+
+    return Theme.Space.Gap
+end
+
+--=== loading ===============================================================
+
+-- Waiting, drawn as the thing being waited for: rows where the rows will be, with a sheen crossing them. The
+-- sweep is a gradient offset moved by the same decay as everything else, so it stops when the skeleton is
+-- taken away and costs nothing while it is not there.
+local SweepToken = 0
+
+function MonoUI:Skeleton(parent, count, height)
+    if parent == nil then
+        return nil
+    end
+
+    local rows  = {}
+    local mine  = SweepToken + 1
+    SweepToken  = mine
+
+    for index = 1, (count or 3) do
+        local row = Sticker(Element {
+            ClassName   = "Frame",
+            Parent      = parent,
+            Name        = "Skeleton",
+            Size        = UDim2.new(1, 0, 0, height or Theme.RowHeight or 28),
+            LayoutOrder = index,
+            ZIndex      = 2,
+        }, { Color = "Row", Alpha = Theme.RowAlpha, Corner = "RowRadius" })
+
+        rows[#rows + 1] = {
+            Frame = row,
+            Sheen = Element {
+                ClassName    = "UIGradient",
+                Parent       = row,
+                Name         = "Sweep",
+                Offset       = Vector2.new(-1, 0),
+                Transparency = NumberSequence.new {
+                    NumberSequenceKeypoint.new(0.0, 1.00),
+                    NumberSequenceKeypoint.new(0.5, 0.55),
+                    NumberSequenceKeypoint.new(1.0, 1.00),
+                },
+            },
+        }
+    end
+
+    local function Cross()
+        if SweepToken ~= mine then
+            return
+        end
+        for _, row in ipairs(rows) do
+            Motion.Follow(row.Sheen, "Offset", Vector2.new(1, 0), 2.2)              -- a slow crossing, not a strobe
+        end
+        task.delay(0.5, function()
+            if SweepToken ~= mine then
+                return
+            end
+            for _, row in ipairs(rows) do
+                row.Sheen.Offset = Vector2.new(-1, 0)
+            end
+            Cross()
+        end)
+    end
+    Cross()
+
+    return {
+        Frames = rows,
+        Stop   = function()
+            SweepToken = SweepToken + 1                                               -- the sweep stops because its token is stale
+            for _, row in ipairs(rows) do
+                if row.Frame.Parent ~= nil then
+                    row.Frame:Destroy()
+                end
+            end
+        end,
+    }
+end
+
+-- Nothing here yet, in words and with a way on: an empty list is the place a script is most likely to leave
+-- someone stuck, and "no results" on its own is not a next step.
+function MonoUI:Empty(parent, message, action)
+    if parent == nil then
+        return nil
+    end
+
+    local empty = Element {
+        ClassName              = "Frame",
+        Parent                 = parent,
+        Name                   = "Empty",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 0),
+        AutomaticSize          = Enum.AutomaticSize.Y,
+        LayoutOrder            = 999,
+        ZIndex                 = 2,
+    }
+    Element { ClassName = "UIListLayout", Parent = empty, Name = "Layout", Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }
+
+    Texted(empty, {
+        Name   = "Message",
+        Text   = tostring(message or "Nothing here yet"),
+        Tint   = "Muted",
+        Size   = Theme.Type.Body,
+        Size2  = UDim2.new(1, 0, 0, 18),
+        ZIndex = 3,
+    })
+
+    if action == nil or action.Name == nil then
+        return empty
+    end
+
+    Button {
+        Parent  = empty,
+        Name    = action.Name,
+        Caption = action.Name,
+        Order   = 2,
+        OnClick = action.Run,
+    }
+
+    -- The way on is findable by name like anything else, which is what a palette search would expect.
+    MonoUI:AddAction { Name = action.Name, Kind = "action", Run = action.Run }
+    return empty
+end
+
+--=== overlay ===============================================================
+
+-- What the library is costing, for whoever is looking: frames a second, how many instances the UI is, how much
+-- of the motion driver is live, and how much rain is falling. The budgets are the ones the plan asked for - a
+-- few hundred instances for a window, and no animation connection while nothing is moving - and a number over
+-- its budget is said in weight rather than in colour, like every other state here.
+local OverlayPanel      = nil
+local OverlayConnection = nil
+
+function MonoUI:Stats()
+    local instances = 0
+    if App.gui ~= nil then
+        instances = #App.gui:GetDescendants()
+    end
+
+    local motion = Motion.Stats ~= nil and Motion.Stats() or { Tracks = 0, Running = false }
+    return {
+        Instances = instances,
+        Tracks    = motion.Tracks,
+        Animating = motion.Running,
+        Rain      = #App.streaks,
+        Frosted   = App.blur ~= nil and App.blur.Parent ~= nil,
+    }
+end
+
+function MonoUI:Overlay(on)
+    if on == false then
+        if OverlayConnection ~= nil then
+            pcall(function()
+                OverlayConnection:Disconnect()
+            end)
+            OverlayConnection = nil
+        end
+        if OverlayPanel ~= nil then
+            if OverlayPanel.Parent ~= nil then
+                OverlayPanel:Destroy()
+            end
+            OverlayPanel = nil
+        end
+        return false
+    end
+
+    if App.gui == nil or OverlayPanel ~= nil then
+        return false
+    end
+
+    local panel = Sticker(Element {
+        ClassName     = "Frame",
+        Parent        = App.gui,
+        Name          = "Overlay",
+        AnchorPoint   = Vector2.new(1, 0),
+        Position      = UDim2.new(1, -12, 0, 12),
+        Size          = UDim2.fromOffset(184, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        ZIndex        = 2147483600,
+    }, { Color = "Surface", Alpha = Lifted("overlay", Theme.MenuAlpha), Corner = "RowRadius", Stroke = "Outline",
+        Rim = LiftedRim("overlay"), Glass = true, Padding = { 8, 10, 8, 10 }, Gap = { Padding = 4 } })
+    OverlayPanel = panel
+
+    local rows = {}
+    local function Line(label, budget)
+        local row = Element {
+            ClassName              = "Frame",
+            Parent                 = panel,
+            Name                   = label,
+            BackgroundTransparency = 1,
+            Size                   = UDim2.new(1, 0, 0, 14),
+            ZIndex                 = 2147483601,
+        }
+        Texted(row, { Text = string.upper(label), Tint = "Muted", Size = Theme.Type.Support, Size2 = UDim2.new(0.55, 0, 1, 0), ZIndex = 2147483602 })
+        local value = Texted(row, { Name = "Value", Text = "—", X = Enum.TextXAlignment.Right, Size = Theme.Type.Support, Size2 = UDim2.new(0.45, 0, 1, 0), ZIndex = 2147483602 })
+        Fonted(value, false, true)                                                    -- numbers in mono, so they do not jitter as they change
+        rows[#rows + 1] = { Value = value, Budget = budget }
+    end
+
+    Line("fps")
+    Line("instances", Theme.Budgets and Theme.Budgets.Instances)
+    Line("tracks")
+    Line("rain")
+
+    local frames, since = 0, 0
+    OverlayConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        frames = frames + 1
+        since  = since + deltaTime
+        if since < 0.25 then
+            return
+        end
+
+        local stats = MonoUI:Stats()
+        local per   = frames / since
+        frames, since = 0, 0
+
+        rows[1].Value.Text = string.format("%.0f", per)
+        rows[2].Value.Text = tostring(stats.Instances)
+        rows[3].Value.Text = tostring(stats.Tracks)
+        rows[4].Value.Text = tostring(stats.Rain)
+
+        Fonted(rows[1].Value, false, true)
+        Fonted(rows[2].Value, rows[2].Budget ~= nil and stats.Instances > rows[2].Budget, true)
+        Fonted(rows[3].Value, stats.Animating and stats.Tracks == 0, true)            -- a connection with nothing to drive is the idle cost being watched for
+        Fonted(rows[4].Value, false, true)
+    end)
+
+    return panel
+end
+
+--=== states ================================================================
+
+-- Status without colour: a state is a shape and a weight, never a tint, because this palette has none to
+-- spend on one. A filled dot is ready, an open ring is idle, a slow breath is busy, and anything that wants
+-- attention says so in words as well as in a mark.
+local STATES = {
+    ready   = { Word = "READY",   Filled = true  },
+    idle    = { Word = "IDLE",    Filled = false },
+    busy    = { Word = "WORKING", Filled = true, Breathes = true },
+    warning = { Word = "WARNING", Filled = false, Bold = true, Glyph = "warning" },
+    error   = { Word = "ERROR",   Filled = true,  Bold = true },
+}
+
+local function StateOf(name)
+    return STATES[name] or STATES.ready
+end
+
+-- A surface carries its state in the status pill: a mark, a word, and - when there is something to say - a
+-- line under the header, which is where the eye already is. The mark is the same two shapes a switch uses,
+-- filled for on and open for off, so a state reads the same wherever it turns up.
+local function AttachState(object, status, bar)
+    local fault = Texted(bar, {
+        Name     = "Fault",
+        Text     = "",
+        Tint     = "Muted",
+        Size     = Theme.Type.Support,
+        Position = UDim2.fromOffset(12, 34),
+        Size2    = UDim2.new(1, -24, 0, 12),
+        ZIndex   = 6,
+    })
+    fault.Visible  = false
+    object.fault   = fault
+
+    local glyph = nil
+    local token = 0
+
+    -- The breath is two delays that call each other, rather than a loop on its own thread: the module's own
+    -- timers are what the tests can drive, and a state change stops it by outliving the token it was given.
+    local function Breathe(mark, mine)
+        Motion.Follow(mark, "BackgroundTransparency", 0.7, 5)
+        task.delay(0.7, function()
+            if token ~= mine then
+                return
+            end
+            Motion.Follow(mark, "BackgroundTransparency", 0, 5)
+            task.delay(0.7, function()
+                if token == mine then
+                    Breathe(mark, mine)
+                end
+            end)
+        end)
+    end
+
+    -- The line shakes rather than the control. A control that belongs to a layout cannot be moved without
+    -- fighting that layout, and the words are where the eye is anyway.
+    local function Jolt()
+        if Motion.Enabled == false then
+            return
+        end
+
+        local base    = UDim2.fromOffset(12, 34)
+        local offsets = { 5, -4, 3, -2, 1, 0 }
+        for index, offset in ipairs(offsets) do
+            task.delay((index - 1) * 0.035, function()
+                Motion.Play(fault, "Press", {
+                    Position = UDim2.new(base.X.Scale, base.X.Offset + offset, base.Y.Scale, base.Y.Offset),
+                })
+            end)
+        end
+    end
+
+    function object:SetState(state, message)
+        local look = StateOf(state)
+        object.state = state
+        token = token + 1
+
+        -- The pill carries the state's word and nothing more - it is a narrow thing - and anything the script
+        -- had to say goes in the line under the header, where there is room for a sentence.
+        status.label.Text = string.upper(look.Word)
+        fault.Text        = message ~= nil and string.upper(tostring(message)) or ""
+        Fonted(status.label, look.Bold == true)
+        status.dot.BackgroundTransparency = look.Filled and 0 or 1
+        status.dot.BackgroundColor3       = Theme.Muted
+        status.dot.Visible                = look.Glyph == nil
+
+        if look.Glyph ~= nil then
+            if glyph == nil then
+                glyph = Glyphs[look.Glyph](status.pill, 9, "Text")
+                glyph.AnchorPoint = Vector2.new(0, 0.5)
+                glyph.Position    = UDim2.new(0, 7, 0.5, 0)
+            end
+            glyph.Visible = true
+        elseif glyph ~= nil then
+            glyph.Visible = false
+        end
+
+        local speaking = fault.Text ~= "" and (state == "error" or state == "warning")
+        fault.Visible  = speaking
+        if state == "error" and speaking then
+            Jolt()
+        end
+
+        if look.Breathes then
+            Breathe(status.dot, token)
+        end
+
+        return state
+    end
+
+    return object
+end
+
 -- One plate: the window surface itself, with the title bar, the hint line and the drag.
 -- Everything else - the tab strip, the body, a second plate - hangs off it.
 local function CreatePlateFrame(settings, order)
@@ -2805,10 +5322,10 @@ local function CreatePlateFrame(settings, order)
         ZIndex        = 1,
     }, {
         Color   = "Surface",
-        Alpha   = Theme.WindowAlpha,
+        Alpha   = Lifted("base", Theme.WindowAlpha),
         Corner  = "Radius",
         Stroke  = "Outline",
-        Rim     = true,
+        Rim     = LiftedRim("base"),
         Glass   = true,
         Padding = { Theme.Space.Pad, Theme.Space.Pad, Theme.Space.Pad, Theme.Space.Pad },
         Gap     = { Padding = Theme.Space.Gap },
@@ -2816,7 +5333,51 @@ local function CreatePlateFrame(settings, order)
 
     -- The scale the plate is revealed with. It lives on the plate itself, so the whole window
     -- moves together and nothing inside it has to know that it was shown rather than placed.
+    Glass(plate)
     Element { ClassName = "UIScale", Parent = plate, Name = "Scale" }
+
+    -- The grip changes the width, which is the one dimension a plate does not work out for itself: the
+    -- height follows its contents. What it was left at is saved with the rest of the layout.
+    local grip = Sticker(Element {
+        ClassName   = "Frame",
+        Parent      = plate,
+        Name        = "Grip",
+        AnchorPoint = Vector2.new(1, 1),
+        Position    = UDim2.new(1, 0, 1, 0),
+        Size        = UDim2.fromOffset(12, 12),
+        ZIndex      = 3,
+    }, { Color = "Muted", Corner = 0.5, Alpha = 0.6 })
+
+    local sizing = { active = false, start = 0, width = 0 }
+    grip.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            sizing.active = true
+            sizing.start  = input.Position.X
+            sizing.width  = plate.Size.X.Offset
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    sizing.active = false
+                end
+            end)
+        end
+    end)
+
+    local gripConnection = UserInput.InputChanged:Connect(function(input)
+        if not sizing.active then
+            return
+        end
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+
+        local wanted = math.clamp(sizing.width + (input.Position.X - sizing.start), Theme.MinWidth or 240, Theme.MaxWidth or 1200)
+        plate.Size = UDim2.fromOffset(wanted, 0)
+    end)
+    plate.Destroying:Connect(function()
+        pcall(function()
+            gripConnection:Disconnect()
+        end)
+    end)
 
     local bar = Sticker(Element {
         ClassName   = "Frame",
@@ -2831,7 +5392,7 @@ local function CreatePlateFrame(settings, order)
         Size     = Theme.Type.Label,
         Bold     = true,
         Position = UDim2.fromOffset(12, 4),
-        Size2    = UDim2.new(1, -128, 0, 16),
+        Size2    = UDim2.new(1, -176, 0, 16),                                        -- clear of the pill and the two window buttons
         ZIndex   = 2,
     })
 
@@ -2841,7 +5402,7 @@ local function CreatePlateFrame(settings, order)
         Size     = Theme.Type.Support,
         Bold     = false,
         Position = UDim2.fromOffset(12, 20),
-        Size2    = UDim2.new(1, -128, 0, 11),
+        Size2    = UDim2.new(1, -176, 0, 11),
         ZIndex   = 2,
     })
 
@@ -2851,7 +5412,7 @@ local function CreatePlateFrame(settings, order)
         Parent      = bar,
         Name        = "Status",
         AnchorPoint = Vector2.new(1, 0.5),
-        Position    = UDim2.new(1, -10, 0.5, 0),
+        Position    = UDim2.new(1, -56, 0.5, 0),
         Size        = UDim2.fromOffset(settings.PillWidth or 112, 22),
         ZIndex      = 2,
     }, { Color = "Row", Alpha = Theme.RowAlpha, Corner = 0.5, Stroke = "Line" })
@@ -2922,6 +5483,8 @@ function MonoUI:CreatePlate(settings)
     -- flicker of characters. The dot takes its colour over the same moment, on a decay - SetStatus is
     -- called whenever the script likes, so it is the interruptible kind of change.
     local said = 0
+    AttachState(object, status, bar)
+
     function object:SetStatus(text, tint)
         said = said + 1
         local mine = said
@@ -3013,10 +5576,18 @@ function MonoUI:CreateWindow(settings)
     local TAB_GAP     = 6
     local TAB_PER_ROW = 6
     local TAB_SLIDE   = 8
+    local SIDEBAR_AT    = 4                                                            -- more tabs than this and the strip stands up on the left
+    local SIDEBAR_WIDTH = 148
+    local sidebar       = false                                                        -- which way the strip is standing, decided by Relayout below
 
     -- Where a tab's cell is: arithmetic rather than measurement, so the pill can be sent to a tab on the
-    -- same frame the tab is made, before any layout has run.
+    -- same frame the tab is made, before any layout has run. A sidebar is the same grid on its end, one
+    -- tab per row.
     local function TabCell(index)
+        if sidebar then
+            return UDim2.fromOffset(0, (index - 1) * (TAB_HEIGHT + TAB_GAP))
+        end
+
         local across = (index - 1) % TAB_PER_ROW
         local down   = math.floor((index - 1) / TAB_PER_ROW)
         return UDim2.fromOffset(across * (TAB_WIDTH + TAB_GAP), down * (TAB_HEIGHT + TAB_GAP))
@@ -3048,7 +5619,7 @@ function MonoUI:CreateWindow(settings)
         Size                   = UDim2.new(1, 0, 1, 0),
         ZIndex                 = 3,
     }
-    Element {
+    local cells = Element {
         ClassName             = "UIGridLayout",
         Parent                = strip,
         Name                  = "Columns",
@@ -3071,6 +5642,58 @@ function MonoUI:CreateWindow(settings)
     }
     window.holder = holder
 
+    -- Past four tabs the strip stands up on the left and the tabs sit beside it, which needs the two of them
+    -- in one row: the split frame exists only in that mode, because a row of tabs has nothing to split.
+    local split = Element {
+        ClassName              = "Frame",
+        Parent                 = nil,
+        Name                   = "Split",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 0),
+        AutomaticSize          = Enum.AutomaticSize.Y,
+        LayoutOrder            = 2,
+    }
+
+    -- The tabs' side of that row. They live in a column of their own rather than in the split itself, because
+    -- a tab's wrap is sized by the body that measures it - the inset has to come from the frame around them.
+    local column = Element {
+        ClassName              = "Frame",
+        Parent                 = split,
+        Name                   = "Body",
+        BackgroundTransparency = 1,
+        Position               = UDim2.fromOffset(SIDEBAR_WIDTH + TAB_GAP, 0),
+        Size                   = UDim2.new(1, -(SIDEBAR_WIDTH + TAB_GAP), 0, 0),
+        AutomaticSize          = Enum.AutomaticSize.Y,
+    }
+
+    -- Which way the strip is standing, and everything that follows from it. Decided from the number of tabs
+    -- rather than remembered, so it is the same answer however a script arrives at that many.
+    local function Relayout()
+        sidebar = #window.tabs > SIDEBAR_AT
+
+        host.AutomaticSize          = sidebar and Enum.AutomaticSize.Y or Enum.AutomaticSize.None
+        host.Size                   = sidebar and UDim2.fromOffset(SIDEBAR_WIDTH, 0) or UDim2.new(1, 0, 0, TAB_HEIGHT)
+        pill.Size                   = sidebar and UDim2.fromOffset(SIDEBAR_WIDTH, TAB_HEIGHT) or UDim2.fromOffset(TAB_WIDTH, TAB_HEIGHT)
+        cells.FillDirection         = sidebar and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
+        cells.FillDirectionMaxCells = sidebar and 1 or TAB_PER_ROW
+        cells.CellSize              = sidebar and UDim2.new(0, SIDEBAR_WIDTH, 0, TAB_HEIGHT) or UDim2.new(0, TAB_WIDTH, 0, TAB_HEIGHT)
+
+        split.Parent = sidebar and plate or nil
+        host.Parent  = sidebar and split or (#window.tabs > 1 and plate or holder)
+
+        for _, tab in ipairs(window.tabs) do
+            if tab.wrap.Parent ~= holder then
+                tab.wrap.Parent = sidebar and column or plate
+            end
+        end
+
+        if window.active ~= nil and window.active.index ~= nil then
+            Motion.Follow(pill, "Position", TabCell(window.active.index))
+        end
+
+        return sidebar
+    end
+
     -- the pill that stays on screen while the window is hidden
     local chip = Sticker(Element {
         ClassName       = "TextButton",
@@ -3081,7 +5704,8 @@ function MonoUI:CreateWindow(settings)
         Text            = "",
         Visible         = false,
         ZIndex          = 5,
-    }, { Color = "Surface", Alpha = Theme.WindowAlpha, Corner = "RowRadius", Stroke = "Outline", Rim = true, Glass = true })
+    }, { Color = "Surface", Alpha = Lifted("raised", Theme.WindowAlpha), Corner = "RowRadius", Stroke = "Outline", Rim = LiftedRim("raised"), Glass = true })
+    Glass(chip, "raised")
 
     Texted(chip, {
         Text   = string.upper(name),
@@ -3099,8 +5723,60 @@ function MonoUI:CreateWindow(settings)
         end
     end)
 
+    -- A press anywhere on a plate brings it forward, so a stack of windows can be sorted by touching the one
+    -- you want to read. The two buttons are there because hiding and closing should not be things a script
+    -- has to tell anyone the key for.
+    plate.InputBegan:Connect(function()
+        plate.ZIndex = Raise()
+    end)
+
+    local minimize = Sticker(Element {
+        ClassName       = "TextButton",
+        Parent          = bar,
+        Name            = "Minimize",
+        AnchorPoint     = Vector2.new(1, 0.5),
+        Position        = UDim2.new(1, -34, 0.5, 0),
+        Size            = UDim2.fromOffset(18, 18),
+        AutoButtonColor = false,
+        Text            = "",
+        ZIndex          = 4,
+    }, { Color = "Row", Alpha = Theme.RowAlpha, Corner = "RowRadius", Stroke = "Line" })
+    Element {
+        ClassName        = "Frame",
+        Parent           = minimize,
+        Name             = "Mark",
+        AnchorPoint      = Vector2.new(0.5, 0.5),
+        Position         = UDim2.new(0.5, 0, 0.5, 0),
+        Size             = UDim2.fromOffset(8, 2),
+        BackgroundColor3 = Theme.Text,
+        BorderSizePixel  = 0,
+        ZIndex           = 5,
+    }
+
+    local close = Sticker(Element {
+        ClassName       = "TextButton",
+        Parent          = bar,
+        Name            = "Close",
+        AnchorPoint     = Vector2.new(1, 0.5),
+        Position        = UDim2.new(1, -10, 0.5, 0),
+        Size            = UDim2.fromOffset(18, 18),
+        AutoButtonColor = false,
+        Text            = "",
+        ZIndex          = 4,
+    }, { Color = "Row", Alpha = Theme.RowAlpha, Corner = "RowRadius", Stroke = "Line" })
+    Glyphs.cross(close, 10, "Text")
+
+    minimize.MouseButton1Click:Connect(function()
+        window:SetVisible(false)
+    end)
+    close.MouseButton1Click:Connect(function()
+        window:Destroy()
+    end)
+
     -- As on a plate: the text leaves before the next arrives, and the dot takes its colour on a decay.
     local announced = 0
+    AttachState(window, status, bar)
+
     function window:SetStatus(text, tint)
         announced = announced + 1
         local mine = announced
@@ -3177,8 +5853,8 @@ function MonoUI:CreateWindow(settings)
     function window:SetCollapsed(collapsed)
         window.collapsed = collapsed and true or false
 
-        if host.Parent == plate then
-            Fold(host, window.collapsed, TAB_HEIGHT)
+        if host.Parent ~= holder then
+            Fold(host, window.collapsed, TAB_HEIGHT)                                -- the strip is up, whether as a row or as a sidebar
         end
         for _, tab in ipairs(window.tabs) do
             tab.body:SetCollapsed(window.collapsed)
@@ -3211,6 +5887,7 @@ function MonoUI:CreateWindow(settings)
     local function Show(tab)
         local scroll = tab.body.Scroll
         scroll.Position = UDim2.fromOffset(0, TAB_SLIDE)
+        Apply(tab.wrap, "Tab", { GroupTransparency = 1 }, false)                     -- an arrival starts from nothing, whatever it was left at
         Motion.Play(scroll, "Tab",    { Position = UDim2.fromOffset(0, 0) })
         Motion.Play(tab.wrap, "Tab",  { GroupTransparency = 0 })
     end
@@ -3266,7 +5943,7 @@ function MonoUI:CreateWindow(settings)
 
             for index, other in ipairs(window.tabs) do
                 local shown = other == tab
-                other.wrap.Parent = shown and plate or holder
+                other.wrap.Parent = shown and (sidebar and column or plate) or holder
                 other.wrap.LayoutOrder = 3
 
                 if not shown then
@@ -3289,12 +5966,15 @@ function MonoUI:CreateWindow(settings)
             body:Cap()                                                               -- the tab arriving is measured as it arrives
         end
 
+        tab.Focus = Focus                                                            -- so the palette can bring a tab up by name
         tab.button.MouseButton1Click:Connect(Focus)
         window.tabs[#window.tabs + 1] = tab
+        tab.index = #window.tabs
 
-        -- a single tab needs no strip; with two or more the host carrying the pill and the buttons comes
-        -- into the plate, and in between it waits inside the holder so Destroy still reaches it
-        host.Parent = #window.tabs > 1 and plate or holder
+        -- A single tab needs no strip; with two or more the host carrying the pill and the buttons comes into
+        -- the plate, and past four it stands up on the left instead. Relayout decides that, along with where
+        -- each tab's content goes and where the pill is sent.
+        Relayout()
         Focus()
 
         return tab
@@ -3387,6 +6067,7 @@ MonoUI.Input     = Input
 MonoUI.Button    = Button
 MonoUI.Heading   = Heading
 MonoUI.CreateRegion = CreateRegion
+MonoUI.Glyphs   = Glyphs
 
 -- A surface is any frame that wants the shared backdrop while it is on screen: the blur for the game
 -- behind it, and the rain inside it. Windows and plates made here register themselves; these two are
