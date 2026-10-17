@@ -1073,7 +1073,7 @@ local function Button(properties)
         Text            = "",
         LayoutOrder     = properties.Order or 1,
         ZIndex          = properties.ZIndex or 2,
-    }, { Color = properties.Color or "Row", Alpha = Theme.RowAlpha, Corner = "RowRadius", Stroke = properties.Stroke or "Line", Glass = true })
+    }, { Color = properties.Color or "Row", Alpha = properties.Alpha or Theme.RowAlpha, Corner = "RowRadius", Stroke = properties.Stroke or "Line", Glass = true })
 
     Texted(button, {
         Text   = string.upper(properties.Caption or properties.Text or "BUTTON"),
@@ -1084,8 +1084,10 @@ local function Button(properties)
     })
 
     -- Hover picks no new colour: the fill keeps its tint and simply comes up a little denser,
-    -- which is the one thing every glass control in this file does when it is touched.
-    Hoverable(button, RowLooks)
+    -- which is the one thing every glass control in this file does when it is touched. A button
+    -- whose fill is not the usual glass - a solid pill - brings its own looks, or the default
+    -- hover would fade it back out from under the caption.
+    Hoverable(button, properties.Looks or RowLooks)
 
     button.MouseButton1Click:Connect(function()
         if properties.OnClick then
