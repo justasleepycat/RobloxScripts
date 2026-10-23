@@ -907,3 +907,10 @@ task.spawn(ClickToJail)
 task.spawn(ClickToFlingCars)
 
 SetStretcherClientScriptState(true)
+
+
+game:GetService("RunService"):BindToRenderStep("frVel", 0, function()
+    pcall(function()
+        game.Players.LocalPlayer.Character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(0,0,0)
+    end)
+end)

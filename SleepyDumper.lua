@@ -10,6 +10,7 @@ end
 
 function SleepyDumper:DumpFunctions(config)
     local DumpedFunctions = {}
+
     local success, err = pcall(function()
         for i,v in pairs(getgc(true)) do
             local success, err = pcall(function()
@@ -20,27 +21,39 @@ function SleepyDumper:DumpFunctions(config)
                         --if isInternalFunction(v) then return end
                         local FuncName = FuncInfo.name
                         local FuncSource = FuncInfo.source
-                        if FuncSource == "=[C]" then return end
-                        if string.len(FuncName) < 2 then return end
+
+                        if not FuncName then
+                            return
+                        end
+                        if FuncSource == "=[C]" then 
+                            return 
+                        end
+                        if string.len(FuncName) < 2 then 
+                            return 
+                        end
+
                         FuncSource = string.gsub(FuncSource, "=", "")
                         table.insert(DumpedFunctions, {FuncName, FuncSource})
                     end
                 end
 			end)
             if not success then
-				print(err)
+				print("[!] [SleepyDumper:DumpFunctions] ", err)
 			end
         end
+
         writefile(scriptPath.."/DumpedFunctions.lua", "")
         table.sort(DumpedFunctions, function(a, b)
             return a[1] < b[1]
         end)
+
         for i,v in pairs(DumpedFunctions) do
 			appendfile(scriptPath.."/DumpedFunctions.lua", string.format("%s = %s\n", v[1], v[2]))
 		end
 	end)
+
     if not success then
-		print(err)
+		print("[!] [SleepyDumper:DumpFunctions] ", err)
 	end
 end
 
@@ -68,14 +81,17 @@ function SleepyDumper:DumpInstance(instance : Instance)
                 name = string.gsub(name, "\\", "")
                 if v:IsA("ModuleScript") or v:IsA("LocalScript") then
                     if loops < maxloops then loops += 1 else loops = 0; task.wait(.01) end
+
                     local str = decompile(v)
-                    pcall(print, "Dumped "..tostring(v))
+
+                    pcall(print, "[i] [DumpChildren] Dumped "..tostring(v))
                     local success, err = pcall(function()
                         writefile(path.."/"..name..".lua", "-- Dumped By SleepyDumper\n-- Script Path: "..tostring(v:GetFullName()).."\n"..str)
                         writefile(path.."/"..name..".bytecode", tostring(getscriptbytecode(v)))
 					end)
+
                     if not success then
-						print(path)
+						print("[!] [DumpChildren] ", path)
 						error(err)
 					end
                 end
@@ -84,9 +100,11 @@ function SleepyDumper:DumpInstance(instance : Instance)
                 end
             end
         end
+
         DumpChildren(instance, CurrentPath)
-        print("Dump finished: "..tostring(CurrentPath))
+        print("[i] [SleepyDumper:DumpInstance] Dump finished: "..tostring(CurrentPath))
 	end)
+
     if not success then
 		print(err)
 	end
@@ -95,15 +113,15 @@ end
 -- Example usage
 --game:GetService("Players").LocalPlayer:Kick("Dumping")
 --game:GetService("GuiService"):ClearError()
-SleepyDumper:ChangeName("Greenville")
+SleepyDumper:ChangeName("GakuGOON")
 SleepyDumper:DumpInstance(game:GetService("Workspace"))
 SleepyDumper:DumpInstance(game:GetService("ReplicatedStorage"))
 SleepyDumper:DumpInstance(game:GetService("ReplicatedFirst"))
 SleepyDumper:DumpInstance(game:GetService("Players"))
 SleepyDumper:DumpInstance(game:GetService("StarterPlayer"))
 SleepyDumper:DumpFunctions()
-print("Dumped Functions")
-print("Finished Dumping!")
+print("[i] Dumped Functions")
+print("[i] Finished Dumping!")
 
 
 
