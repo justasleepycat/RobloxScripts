@@ -1166,8 +1166,12 @@ local function Select(properties)
         ZIndex          = properties.ZIndex or 2,
     }, { Color = "Well", Alpha = Theme.WellAlpha, Corner = "RowRadius", Stroke = "Line" })
 
+    -- A well with a caption keeps the value in the right 60%, ending clear of the stroke. A well
+    -- without one has nothing to caption, so the value takes the whole width and sits centred in
+    -- it, which is what a caller laying out a name/value column wants.
+    local hasCaption = properties.Caption ~= nil and properties.Caption ~= ""
     Texted(row, {
-        Text     = string.upper(properties.Caption or "SELECT"),
+        Text     = hasCaption and string.upper(properties.Caption) or "",
         Tint     = "Muted",
         Size     = Theme.Type.Heading,
         Position = UDim2.fromOffset(10, 0),
@@ -1178,8 +1182,9 @@ local function Select(properties)
     local value = Texted(row, {
         Tint     = "Text",
         Size     = Theme.Type.Body,
-        X        = Enum.TextXAlignment.Right,
-        Size2    = UDim2.new(0.6, -14, 1, 0),
+        X        = hasCaption and Enum.TextXAlignment.Right or Enum.TextXAlignment.Center,
+        Position = hasCaption and UDim2.new(0.4, 0, 0, 0) or UDim2.fromOffset(10, 0),
+        Size2    = hasCaption and UDim2.new(0.6, -10, 1, 0) or UDim2.new(1, -20, 1, 0),
         ZIndex   = 3,
     })
 
@@ -1309,7 +1314,8 @@ local function Input(properties)
         PlaceholderColor3 = Theme.Muted,
         LayoutOrder       = properties.Order or 1,
         ZIndex            = properties.ZIndex or 2,
-    }, { Color = "Well", Alpha = Theme.WellAlpha, Corner = "RowRadius", Stroke = "Line" })
+    }, { Color = "Well", Alpha = Theme.WellAlpha, Corner = "RowRadius", Stroke = "Line",
+         Padding = { 0, 8, 0, 8 } })
     Fonted(box)
 
     local function Submit(text)

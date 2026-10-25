@@ -7,21 +7,28 @@
           friction, condition), with a typed editor per row: a switch for booleans, a numeric box
           for numbers, a hex box and swatch for colours, a dropdown for enums and for the few
           strings that are really an enumeration, and a text box for everything else.
+        - Adds a MOTOR group read from the car's own A-Chassis Tune module: the top-speed and 0-60
+          estimates those fields add up to, then every lever behind them - horsepower, weight,
+          redline, gear ratios, final drive, brake/parking/handbrake torque, steering torque,
+          electric motor torque, torque vector, differential preloads and the throttle/brake
+          response curves. Tune rows are polled, so a change the chassis makes shows up too.
         - Applies the values that have a live client-side effect straight away (body paint,
-          interior trim, brake colour, rim decal, plate text). Dynamics and suspension are written
-          to the vehicle as well, but A-Chassis reads those while it initialises, so the value is
-          stored on the client's copy without changing this spawn's handling.
+          interior trim, brake colour, rim decal, plate text). Dynamics, suspension and the motor
+          tune are read by A-Chassis while it initialises, so they are stored on the client's copy
+          and take effect when the game restarts the chassis - leaving and re-entering the vehicle
+          does that, and every apply of that kind says so in its notification.
         - Watches every attribute it lists, so a value the game changes (odometer, dirt level, an
           attribute the server rewrote) updates in the window without a refresh.
         - Saves a snapshot of the properties you tick and restores it later, with Select All and
           Unselect All at the top of the selection list.
-        - Shows the car's preview image, taken from the same CarData module the spawn menu uses
-          (`VehicleImagePreview`), and reloads the header if the vehicle is respawned.
+        - Renders a clone of the current car in a ViewportFrame: the Body, Wheels and Misc geometry
+          with every script, effect and constraint stripped out, turning at ten degrees a second and
+          draggable to look around. It is rebuilt when the paint, interior, brakes or rims change.
         - Reports every apply, save and restore in a toast and in the window's status line.
 
     Layout
         |--------------------------------------------------------------|
-        | Car name                                  Preview image       |
+        | Car name                                  Live car viewport   |
         |--------------------------------------------------------------|
         | Save / restore properties (opens the checkbox dropdown)      |
         |--------------------------------------------------------------|
@@ -63,7 +70,9 @@ end
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService        = game:GetService("RunService")
 local TweenService      = game:GetService("TweenService")
+local UserInputService  = game:GetService("UserInputService")
 local Workspace         = game:GetService("Workspace")
 
 local Player = Players.LocalPlayer
@@ -78,6 +87,7 @@ local ToastLifetime     = 4
 -- Groups are shown in this order; anything unrecognised lands in Other. The order mirrors the car
 -- itself: what you see from outside first, then what you feel from the driver's seat.
 local GroupRank = {
+    Motor      = 0,
     Paint      = 1,
     Interior   = 2,
     Plates     = 3,
@@ -107,6 +117,15 @@ local State = {
     entries            = {},
     selection          = {},
     snapshot           = nil,
+    tune               = nil,
+    tuneModule         = nil,
+    pollToken          = 0,
+    viewport           = nil,
+    viewportDisplay    = nil,
+    viewportCenter     = nil,
+    viewportYaw        = 25,
+    viewportPitch      = 8,
+    viewportRefresh    = false,
     structureKey       = "",
     structurePending   = false,
     checkboxRefreshers = {},
@@ -118,6 +137,30 @@ local State = {
 
 local ToastHost = nil
 local ToastList = {}
+
+-- The display is dragged with the same pointer state the spin loop reads, so a drag anywhere on the
+-- viewport freezes the spin until the pointer is released.
+local ViewportDrag = { active = false, pointer = nil, last = Vector2.zero }
+
+-- Assigned with the display, but needed by the apply path above it.
+local ScheduleViewportRefresh
+
+-- Everything a car carries for driving, not for looking at: scripts, remotes, physics constraints,
+-- effects and values. The clone keeps only geometry, decals/textures and the plate SurfaceGuis.
+local ViewportBlocklist = {
+    Script = true, LocalScript = true, ModuleScript = true,
+    RemoteEvent = true, RemoteFunction = true, BindableEvent = true, BindableFunction = true,
+    Sound = true, ParticleEmitter = true, Trail = true, Beam = true, Smoke = true, Fire = true,
+    Sparkles = true, Explosion = true, Highlight = true, SelectionBox = true, SelectionSphere = true,
+    Attachment = true, Weld = true, WeldConstraint = true, Motor6D = true, HingeConstraint = true,
+    SpringConstraint = true, RigidConstraint = true, Torque = true,
+    BodyGyro = true, BodyVelocity = true, BodyAngularVelocity = true, BodyPosition = true,
+    BodyForce = true, VectorForce = true, AlignPosition = true, AlignOrientation = true,
+    LinearVelocity = true, AngularVelocity = true,
+    ClickDetector = true, ProximityPrompt = true, BillboardGui = true,
+    NumberValue = true, StringValue = true, ObjectValue = true, IntValue = true, BoolValue = true,
+    PointLight = true, SpotLight = true, SurfaceLight = true,
+}
 
 --=== logging ================================================================
 
@@ -245,6 +288,193 @@ local function ReadAtSpawn(key)
         end
     end
     return false
+end
+
+--=== list helpers ==========================================================
+
+local function CopyValue(value)
+    if type(value) ~= "table" then
+        return value
+    end
+    local copy = {}
+    for index, item in ipairs(value) do
+        copy[index] = item
+    end
+    return copy
+end
+
+local function FormatList(list)
+    local parts = {}
+    for _, value in ipairs(list) do
+        table.insert(parts, FormatNumber(value))
+    end
+    return table.concat(parts, ", ")
+end
+
+local function ParseList(text)
+    local values = {}
+    for token in string.gmatch(text, "[^,%s]+") do
+        local value = tonumber(token)
+        if value == nil then
+            return nil
+        end
+        table.insert(values, value)
+    end
+    if #values < 2 then
+        return nil
+    end
+    return values
+end
+
+--=== motor sources =========================================================
+
+-- A-Chassis keeps its drivetrain in the car's own tune module, not in attributes. These are the
+-- fields that decide how much torque the car puts down, how hard it stops, and where its top speed
+-- lands; the two derived rows at the top are what those fields add up to.
+local MotorFields = {
+    { key = "Horsepower",       label = "Horsepower" },
+    { key = "Weight",           label = "Weight (lb)" },
+    { key = "Redline",          label = "Redline (RPM)" },
+    { key = "PeakRPM",          label = "Peak RPM" },
+    { key = "FinalDrive",       label = "Final drive" },
+    { key = "FDMult",           label = "Final drive mult" },
+    { key = "Ratios",           label = "Gear ratios", kind = "List" },
+    { key = "BrakeForce",       label = "Brake torque" },
+    { key = "PBrakeForce",      label = "Parking brake torque" },
+    { key = "EBrakeForce",      label = "Handbrake torque" },
+    { key = "SteerMaxTorque",   label = "Steer torque" },
+    { key = "RSteerMaxTorque",  label = "Rear steer torque" },
+    { key = "E_Horsepower",     label = "Electric horsepower" },
+    { key = "E_Torque",         label = "Electric motor torque" },
+    { key = "E_Redline",        label = "Electric redline (RPM)" },
+    { key = "E_Trans1",         label = "Electric torque rise" },
+    { key = "E_Trans2",         label = "Electric torque peak" },
+    { key = "TorqueVector",     label = "Torque vector" },
+    { key = "FDiffPreload",     label = "Front diff preload" },
+    { key = "RDiffPreload",     label = "Rear diff preload" },
+    { key = "ThrotAccel",       label = "Throttle accel" },
+    { key = "ThrotDecel",       label = "Throttle decel" },
+    { key = "BrakeAccel",       label = "Brake accel" },
+    { key = "BrakeDecel",       label = "Brake decel" },
+    { key = "RevAccel",         label = "Rev accel" },
+    { key = "LaunchRPM",        label = "Launch RPM" },
+    { key = "LaunchMult",       label = "Launch mult" },
+    { key = "KickMult",         label = "Kick mult" },
+    { key = "Turbochargers",    label = "Turbochargers" },
+    { key = "T_Boost",          label = "Turbo boost" },
+    { key = "T_Efficiency",     label = "Turbo efficiency" },
+    { key = "T_Size",           label = "Turbo size" },
+    { key = "Superchargers",    label = "Superchargers" },
+    { key = "S_Boost",          label = "Supercharger boost" },
+    { key = "S_Efficiency",     label = "Supercharger efficiency" },
+    { key = "S_Sensitivity",    label = "Supercharger sensitivity" },
+}
+
+-- The same arithmetic the dealership uses for its speed spec: the driven wheel's diameter, the
+-- redline, the last gear ratio and the final drive, in the unit the car's speedometer speaks.
+local function ComputeMaxSpeed()
+    local tune = State.tune
+    local wheels = State.wheels
+    if tune == nil or wheels == nil then
+        return 0
+    end
+    local ratios = tune.Ratios
+    if type(ratios) ~= "table" or #ratios == 0 then
+        return 0
+    end
+    local redline = tonumber(tune.Redline)
+    local finalDrive = tonumber(tune.FinalDrive)
+    local finalMult = tonumber(tune.FDMult)
+    if redline == nil or finalDrive == nil or finalMult == nil or finalDrive == 0 or finalMult == 0 then
+        return 0
+    end
+
+    local diameter = 0
+    for _, wheel in ipairs(wheels:GetChildren()) do
+        local driven = tune.Config == "AWD"
+        if not driven then
+            local isFront = string.sub(wheel.Name, 1, 1) == "F"
+            driven = isFront == (tune.Config == "FWD")
+        end
+        if driven then
+            diameter = math.max(diameter, wheel.Size.X)
+        end
+    end
+    if diameter <= 0 then
+        return 0
+    end
+
+    local raw = diameter * math.pi * redline / 60
+    local geared = raw / ratios[#ratios] / finalDrive
+    local rounded = math.ceil(geared / finalMult)
+    return math.floor(rounded * 0.56818181818181812)
+end
+
+-- A lower bound, not a promise: it is the time 60 mph takes if every horsepower reached the road
+-- with no losses, no traction limit and no shifting. It moves with the two numbers that really
+-- decide acceleration - power and weight - which is what makes it useful beside them.
+local function ComputeAcceleration()
+    local tune = State.tune
+    if tune == nil then
+        return 0
+    end
+    local horsepower = tonumber(tune.Horsepower) or 0
+    local weight = tonumber(tune.Weight) or 0
+    if horsepower <= 0 or weight <= 0 then
+        return 0
+    end
+    local mass = weight * 0.45359237
+    local power = horsepower * 745.699872
+    local target = 60 * 0.44704
+    return math.floor((0.5 * mass * target * target / power) * 10 + 0.5) / 10
+end
+
+local function RefreshDerivedEntries()
+    for _, entry in ipairs(State.entries) do
+        if entry.source == "Derived" then
+            local value = entry.compute()
+            entry.value = value
+            if entry.widget ~= nil and entry.widget.Apply ~= nil then
+                pcall(entry.widget.Apply, value)
+            end
+        end
+    end
+end
+
+-- Tune fields have no attribute signal. Half a second of polling is enough for a value nothing in
+-- the car rewrites per frame, and it catches the fields the chassis itself adjusts at spawn.
+local function PollTune()
+    for _, entry in ipairs(State.entries) do
+        if entry.source == "Motor" then
+            local value = entry.getValue()
+            if value ~= entry.value then
+                entry.value = value
+                if entry.widget ~= nil and entry.widget.Apply ~= nil then
+                    pcall(entry.widget.Apply, value)
+                end
+            end
+        elseif entry.source == "Derived" then
+            local value = entry.compute()
+            if value ~= entry.value then
+                entry.value = value
+                if entry.widget ~= nil and entry.widget.Apply ~= nil then
+                    pcall(entry.widget.Apply, value)
+                end
+            end
+        end
+    end
+end
+
+local function StartTunePolling(token)
+    task.spawn(function()
+        while State.window ~= nil and State.pollToken == token do
+            task.wait(0.5)
+            if State.window == nil or State.pollToken ~= token then
+                return
+            end
+            pcall(PollTune)
+        end
+    end)
 end
 
 --=== option sources ========================================================
@@ -596,6 +826,15 @@ local function ApplyPlateText()
     end
 end
 
+local function HasDisplayEffect(key)
+    return string.match(key, "^PaintColor%d$") ~= nil
+        or string.match(key, "^PaintReflectance%d$") ~= nil
+        or string.match(key, "^Int%d_") ~= nil
+        or string.match(key, "^ClassicBrake") ~= nil
+        or key == "RimDecal"
+        or key == "PlateText"
+end
+
 local function ApplyVisuals(key)
     if string.match(key, "^PaintColor%d$") or string.match(key, "^PaintReflectance%d$") then
         ApplyBodyPaint()
@@ -622,28 +861,41 @@ end
 
 local function ApplyProperty(entry, value, silent)
     local applied, problem = pcall(function()
-        entry.target:SetAttribute(entry.key, value)
+        entry.setValue(value)
     end)
     if not applied then
         LogError(string.format("Failed to set %s: %s", entry.id, tostring(problem)))
         if not silent then
-            Notify("error", string.format("%s failed: %s", entry.key, tostring(problem)))
+            Notify("error", string.format("%s failed: %s", entry.label, tostring(problem)))
         end
         return false
     end
 
-    local refreshed, visualProblem = pcall(ApplyVisuals, entry.key)
-    if not refreshed then
-        LogError(string.format("%s was written but the visual refresh failed: %s", entry.id, tostring(visualProblem)))
-        if not silent then
-            Notify("error", string.format("%s written, visual failed: %s", entry.key, tostring(visualProblem)))
+    if entry.source == "Attribute" then
+        entry.value = value
+        local refreshed, visualProblem = pcall(ApplyVisuals, entry.key)
+        if not refreshed then
+            LogError(string.format("%s was written but the visual refresh failed: %s", entry.id, tostring(visualProblem)))
+            if not silent then
+                Notify("error", string.format("%s written, visual failed: %s", entry.label, tostring(visualProblem)))
+            end
+            return false
         end
-        return false
+    end
+
+    if entry.source == "Motor" then
+        entry.value = value
+        RefreshDerivedEntries()
     end
 
     if not silent then
-        local hint = ReadAtSpawn(entry.key) and " (read by A-Chassis at spawn)" or ""
-        Notify("success", string.format("Applied %s = %s%s", entry.key, FormatValue(value), hint))
+        local hint = ""
+        if entry.source == "Motor" then
+            hint = " (exit and re-enter the vehicle to apply)"
+        elseif ReadAtSpawn(entry.key) then
+            hint = " (exit and re-enter the vehicle to apply)"
+        end
+        Notify("success", string.format("Applied %s = %s%s", entry.label, FormatValue(value), hint))
     end
     return true
 end
@@ -653,7 +905,7 @@ end
 local function SelectedEntries()
     local selected = {}
     for _, entry in ipairs(State.entries) do
-        if State.selection[entry.id] ~= false then
+        if not entry.readOnly and State.selection[entry.id] ~= false then
             table.insert(selected, entry)
         end
     end
@@ -674,7 +926,7 @@ local function SaveSelection()
     end
     local values = {}
     for _, entry in ipairs(selected) do
-        values[entry.id] = entry.target:GetAttribute(entry.key)
+        values[entry.id] = CopyValue(entry.getValue())
     end
     State.snapshot = {
         values  = values,
@@ -703,7 +955,7 @@ local function RestoreSelection()
         local value = snapshot.values[entry.id]
         if value == nil then
             missing = missing + 1
-        elseif ApplyProperty(entry, value, true) then
+        elseif ApplyProperty(entry, CopyValue(value), true) then
             restored = restored + 1
         else
             failed = failed + 1
@@ -722,11 +974,10 @@ end
 
 local function ResolveCarIdentity(car)
     local identity = {
-        name    = car.Name,
-        brand   = "",
-        trim    = "",
-        carId   = "",
-        preview = nil,
+        name  = car.Name,
+        brand = "",
+        trim  = "",
+        carId = "",
     }
 
     local carIdValue = car:FindFirstChild("CarID")
@@ -760,46 +1011,112 @@ local function ResolveCarIdentity(car)
         return identity
     end
 
-    identity.name    = tostring(data.VehicleName or identity.name)
-    identity.brand   = tostring(data.VehicleBrand or "")
-    identity.preview = data.VehicleImagePreview
+    identity.name  = tostring(data.VehicleName or identity.name)
+    identity.brand = tostring(data.VehicleBrand or "")
     return identity
 end
 
--- Restricted previews are not an asset id of their own: the game swaps them for an image from a
--- client module. That module can yield, so it resolves in the background and fills the label in
--- when it is done.
-local function ResolvePreviewImage(preview, carId, imageLabel)
-    if type(preview) ~= "number" or preview <= 0 then
+--=== vehicle display =======================================================
+
+-- A copy of the car for the viewport: the geometry of Body, Wheels and Misc only, stripped of
+-- everything that drives it and made static so the pointer can spin it.
+local function CloneVehicleDisplay(car)
+    local display = Instance.new("Model")
+    display.Name = "VehicleDisplay"
+    for _, name in ipairs({ "Body", "Wheels", "Misc" }) do
+        local source = car:FindFirstChild(name)
+        if source ~= nil then
+            local copy = source:Clone()
+            copy.Parent = display
+        end
+    end
+    if #display:GetChildren() == 0 then
+        display:Destroy()
         return nil
     end
-    local restricted = ReplicatedStorage:GetAttribute("RestrictedImage")
-    if restricted == nil or preview ~= restricted then
-        return "rbxassetid://" .. tostring(preview)
+
+    for _, descendant in ipairs(display:GetDescendants()) do
+        if descendant.Parent == nil then
+            continue
+        end
+        if ViewportBlocklist[descendant.ClassName] then
+            descendant:Destroy()
+        elseif descendant:IsA("BasePart") then
+            descendant.Anchored = true
+            descendant.CanCollide = false
+            descendant.CanTouch = false
+            descendant.CanQuery = false
+            descendant.CastShadow = false
+        end
+    end
+    return display
+end
+
+local function ApplyDisplayTransform()
+    local display = State.viewportDisplay
+    local center = State.viewportCenter
+    if display == nil or center == nil then
+        return
+    end
+    display:PivotTo(CFrame.new(center) * CFrame.Angles(math.rad(State.viewportPitch), math.rad(State.viewportYaw), 0))
+end
+
+local function BuildVehicleDisplay()
+    local viewport = State.viewport
+    if viewport == nil or viewport.Parent == nil then
+        return
+    end
+    if State.viewportDisplay ~= nil then
+        State.viewportDisplay:Destroy()
+        State.viewportDisplay = nil
+        State.viewportCenter = nil
     end
 
-    task.spawn(function()
-        local clientModules = ReplicatedStorage:FindFirstChild("ClientModules")
-        local resolverModule = clientModules and clientModules:FindFirstChild("GetRestrictedPreview")
-        if resolverModule == nil then
-            LogError("Restricted preview module is not present")
-            return
-        end
-        local required, resolver = pcall(require, resolverModule)
-        if not required or type(resolver) ~= "function" then
-            LogError("Restricted preview module could not be read")
-            return
-        end
-        local resolved, image = pcall(resolver, carId)
-        if not resolved or type(image) ~= "string" then
-            LogError("Restricted preview could not be resolved")
-            return
-        end
-        if imageLabel.Parent ~= nil then
-            imageLabel.Image = image
-        end
+    local car = State.car
+    if car == nil then
+        return
+    end
+
+    local display = CloneVehicleDisplay(car)
+    if display == nil then
+        LogError("The vehicle has no Body, Wheels or Misc to display")
+        return
+    end
+
+    local boundingCFrame, boundingSize = display:GetBoundingBox()
+    local center = boundingCFrame.Position
+    local radius = math.max(boundingSize.Magnitude / 2, 1)
+    display.WorldPivot = CFrame.new(center)
+    display.Parent = viewport
+
+    if viewport.CurrentCamera ~= nil then
+        viewport.CurrentCamera:Destroy()
+    end
+    local camera = Instance.new("Camera")
+    camera.Name = "VehicleDisplayCamera"
+    camera.FieldOfView = 35
+    camera.CFrame = CFrame.lookAt(
+        center + Vector3.new(radius * 1.15, radius * 0.55, radius * 1.55),
+        center
+    )
+    camera.Parent = viewport
+    viewport.CurrentCamera = camera
+
+    State.viewportDisplay = display
+    State.viewportCenter = center
+    ApplyDisplayTransform()
+    LogInfo(string.format("Vehicle display built from %d instances", #display:GetDescendants()))
+end
+
+function ScheduleViewportRefresh()
+    if State.viewportRefresh then
+        return
+    end
+    State.viewportRefresh = true
+    task.delay(0.2, function()
+        State.viewportRefresh = false
+        BuildVehicleDisplay()
     end)
-    return nil
 end
 
 local function RenderHeader()
@@ -812,6 +1129,9 @@ local function RenderHeader()
             child:Destroy()
         end
     end
+    State.viewport = nil
+    State.viewportDisplay = nil
+    State.viewportCenter = nil
 
     local car = State.car
     if car == nil then
@@ -848,30 +1168,66 @@ local function RenderHeader()
     end
     local subtitle = #subtitleParts > 0 and table.concat(subtitleParts, " · ") or car.Name
 
-    local imageLabel = MonoUI.Sticker(MonoUI.Element {
-        ClassName              = "ImageLabel",
+    local container = MonoUI.Sticker(MonoUI.Element {
+        ClassName              = "Frame",
         Parent                 = header,
-        Name                   = "CarImage",
+        Name                   = "VehicleDisplay",
         BackgroundColor3       = Theme.Well,
-        BackgroundTransparency = Theme.WellAlpha,
-        Image                  = "",
-        Size                   = UDim2.new(0, 238, 1, -12),
-        Position               = UDim2.new(1, -250, 0, 6),
-        ScaleType              = Enum.ScaleType.Fit,
+        BackgroundTransparency = 0.35,
+        Size                   = UDim2.new(0, 306, 0, 138),
+        Position               = UDim2.new(1, -312, 0, 6),
         ZIndex                 = 2,
-    }, { Corner = "RowRadius", Stroke = "Line" })
+    }, { Corner = "RowRadius", Stroke = "Line", Glass = true })
 
-    local image = ResolvePreviewImage(identity.preview, identity.carId, imageLabel)
-    if image ~= nil then
-        imageLabel.Image = image
-    end
+    local viewport = MonoUI.Element {
+        ClassName             = "ViewportFrame",
+        Parent                = container,
+        Name                  = "VehicleViewport",
+        BackgroundTransparency = 1,
+        Size                  = UDim2.new(1, -12, 1, -12),
+        Position              = UDim2.fromOffset(6, 6),
+        Ambient               = Color3.fromRGB(180, 180, 180),
+        LightColor            = Color3.fromRGB(255, 255, 255),
+        LightDirection        = Vector3.new(-0.4, -0.8, -0.5),
+        ZIndex                = 3,
+    }
+    State.viewport = viewport
+
+    local overlay = MonoUI.Element {
+        ClassName             = "TextButton",
+        Parent                = container,
+        Name                  = "VehicleDrag",
+        BackgroundTransparency = 1,
+        AutoButtonColor       = false,
+        Selectable            = false,
+        Text                  = "",
+        Size                  = UDim2.new(1, -12, 1, -12),
+        Position              = UDim2.fromOffset(6, 6),
+        ZIndex                = 5,
+    }
+    overlay.InputBegan:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        ViewportDrag.active = true
+        ViewportDrag.pointer = input.UserInputType
+        ViewportDrag.last = Vector2.new(input.Position.X, input.Position.Y)
+    end)
+    overlay.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            ViewportDrag.active = false
+            ViewportDrag.pointer = nil
+        end
+    end)
+
+    BuildVehicleDisplay()
 
     MonoUI.Texted(header, {
         Text     = identity.name,
         Size     = Theme.Type.Title + 2,
         Tint     = "Text",
         Position = UDim2.fromOffset(14, 14),
-        Size2    = UDim2.new(1, -272, 0, 24),
+        Size2    = UDim2.new(1, -330, 0, 24),
         ZIndex   = 3,
     })
     MonoUI.Texted(header, {
@@ -880,7 +1236,7 @@ local function RenderHeader()
         Tint     = "Muted",
         Bold     = false,
         Position = UDim2.fromOffset(14, 42),
-        Size2    = UDim2.new(1, -272, 0, 18),
+        Size2    = UDim2.new(1, -330, 0, 18),
         ZIndex   = 3,
     })
     MonoUI.Texted(header, {
@@ -889,7 +1245,16 @@ local function RenderHeader()
         Tint     = "Muted",
         Bold     = false,
         Position = UDim2.fromOffset(14, 66),
-        Size2    = UDim2.new(1, -272, 0, 16),
+        Size2    = UDim2.new(1, -330, 0, 16),
+        ZIndex   = 3,
+    })
+    MonoUI.Texted(header, {
+        Text     = "DRAG TO ROTATE",
+        Size     = Theme.Type.Support,
+        Tint     = "Muted",
+        Bold     = false,
+        Position = UDim2.fromOffset(14, 112),
+        Size2    = UDim2.new(1, -330, 0, 16),
         ZIndex   = 3,
     })
 end
@@ -924,13 +1289,12 @@ local function CreateNumberEditor(row, entry)
         Position        = UDim2.new(0.52, 0, 0, 3),
         Text            = FormatValue(entry.value),
         SubmitOnEnter   = true,
-        X               = Enum.TextXAlignment.Right,
         PlaceholderText = "number",
         OnSubmit        = function(text)
             local value = tonumber(text)
             if value == nil or value ~= value or value == math.huge or value == -math.huge then
-                Notify("error", string.format("%s needs a number", entry.key))
-                control.Text = FormatValue(entry.target:GetAttribute(entry.key))
+                Notify("error", string.format("%s needs a number", entry.label))
+                control.Text = FormatValue(entry.getValue())
                 return
             end
             ApplyProperty(entry, value)
@@ -955,7 +1319,6 @@ local function CreateTextEditor(row, entry)
         Position        = UDim2.new(0.52, 0, 0, 3),
         Text            = FormatValue(entry.value),
         SubmitOnEnter   = true,
-        X               = Enum.TextXAlignment.Right,
         PlaceholderText = "text",
         OnSubmit        = function(text)
             ApplyProperty(entry, text)
@@ -990,13 +1353,12 @@ local function CreateColorEditor(row, entry)
         Position        = UDim2.new(0.52, 30, 0, 3),
         Text            = ColorToHex(entry.value),
         SubmitOnEnter   = true,
-        X               = Enum.TextXAlignment.Right,
         PlaceholderText = "#RRGGBB",
         OnSubmit        = function(text)
             local color = ParseColor(text)
             if color == nil then
-                Notify("error", string.format("%s needs #RRGGBB or R,G,B", entry.key))
-                local current = entry.target:GetAttribute(entry.key)
+                Notify("error", string.format("%s needs #RRGGBB or R,G,B", entry.label))
+                local current = entry.getValue()
                 if typeof(current) == "Color3" then
                     control.Text = ColorToHex(current)
                 end
@@ -1074,21 +1436,61 @@ local function CreateEnumEditor(row, entry)
     }
 end
 
+local function CreateListEditor(row, entry)
+    local control
+    control = MonoUI.Input {
+        Parent          = row,
+        Name            = entry.key,
+        Size            = UDim2.new(0.48, 0, 0, 24),
+        Position        = UDim2.new(0.52, 0, 0, 3),
+        Text            = FormatList(entry.value),
+        SubmitOnEnter   = true,
+        PlaceholderText = "numbers, comma separated",
+        OnSubmit        = function(text)
+            local list = ParseList(text)
+            if list == nil then
+                Notify("error", string.format("%s needs comma-separated numbers", entry.label))
+                control.Text = FormatList(entry.getValue())
+                return
+            end
+            ApplyProperty(entry, list)
+        end,
+    }
+    return {
+        Apply = function(value)
+            if control:IsFocused() or type(value) ~= "table" then
+                return
+            end
+            control.Text = FormatList(value)
+        end,
+    }
+end
+
 local function CreateReadOnlyEditor(row, entry)
-    MonoUI.Texted(row, {
+    local label = MonoUI.Texted(row, {
         Text     = FormatValue(entry.value),
-        Size     = Theme.Type.Support,
+        Size     = Theme.Type.Body,
         Tint     = "Muted",
         Bold     = false,
-        X        = Enum.TextXAlignment.Right,
+        X        = Enum.TextXAlignment.Center,
         Position = UDim2.new(0.52, 0, 0, 0),
         Size2    = UDim2.new(0.48, 0, 1, 0),
         ZIndex   = 3,
     })
-    return {}
+    return {
+        Apply = function(value)
+            label.Text = FormatValue(value)
+        end,
+    }
 end
 
 local function CreateEditor(row, entry)
+    if entry.readOnly then
+        return CreateReadOnlyEditor(row, entry)
+    end
+    if entry.kind == "List" then
+        return CreateListEditor(row, entry)
+    end
     if entry.kind == "Boolean" then
         return CreateBooleanEditor(row, entry)
     end
@@ -1114,7 +1516,7 @@ end
 local function CreatePropertyRow(parent, order, entry)
     local row = MonoUI.Row(parent, order, RowHeight)
     MonoUI.Texted(row, {
-        Text     = entry.key,
+        Text     = entry.label,
         Size     = Theme.Type.Body,
         Tint     = "Text",
         Bold     = false,
@@ -1124,9 +1526,14 @@ local function CreatePropertyRow(parent, order, entry)
     })
 
     local widget = CreateEditor(row, entry)
+    entry.widget = widget
 
-    local connection = entry.target:GetAttributeChangedSignal(entry.key):Connect(function()
-        local value = entry.target:GetAttribute(entry.key)
+    if entry.subscribe == nil then
+        return
+    end
+
+    local connection = entry.subscribe(function()
+        local value = entry.getValue()
         if value == nil or widget.Apply == nil then
             return
         end
@@ -1134,8 +1541,71 @@ local function CreatePropertyRow(parent, order, entry)
         if not applied then
             LogError(string.format("Could not refresh the editor for %s", entry.id))
         end
+        if HasDisplayEffect(entry.key) then
+            ScheduleViewportRefresh()
+        end
     end)
     table.insert(State.rowConnections, connection)
+end
+
+local function AttributeEntry(target, targetName, key, value)
+    return {
+        id         = targetName .. "." .. key,
+        key        = key,
+        label      = key,
+        target     = target,
+        targetName = targetName,
+        source     = "Attribute",
+        kind       = KindOf(value),
+        value      = value,
+        group      = GroupOf(key),
+        getValue   = function()
+            return target:GetAttribute(key)
+        end,
+        setValue   = function(newValue)
+            target:SetAttribute(key, newValue)
+        end,
+        subscribe  = function(callback)
+            return target:GetAttributeChangedSignal(key):Connect(callback)
+        end,
+    }
+end
+
+local function TuneEntry(tune, spec, order)
+    local value = tune[spec.key]
+    return {
+        id        = "Motor." .. spec.key,
+        key       = spec.key,
+        label     = spec.label or spec.key,
+        tune      = tune,
+        source    = "Motor",
+        kind      = spec.kind or KindOf(value),
+        value     = value,
+        group     = "Motor",
+        order     = order,
+        getValue  = function()
+            return tune[spec.key]
+        end,
+        setValue  = function(newValue)
+            tune[spec.key] = newValue
+        end,
+    }
+end
+
+local function DerivedEntry(key, label, compute, order)
+    return {
+        id       = "Motor." .. key,
+        key      = key,
+        label    = label,
+        source   = "Derived",
+        kind     = "Number",
+        value    = compute(),
+        group    = "Motor",
+        order    = order,
+        readOnly = true,
+        compute  = compute,
+        getValue = compute,
+    }
 end
 
 local function CollectEntries()
@@ -1146,25 +1616,31 @@ local function CollectEntries()
             return
         end
         for key, value in pairs(target:GetAttributes()) do
-            table.insert(entries, {
-                id         = targetName .. "." .. key,
-                key        = key,
-                target     = target,
-                targetName = targetName,
-                kind       = KindOf(value),
-                value      = value,
-                group      = GroupOf(key),
-            })
+            table.insert(entries, AttributeEntry(target, targetName, key, value))
         end
     end
 
     Collect(State.car, "Car")
     Collect(State.wheels, "Wheels")
+
+    if State.tune ~= nil then
+        table.insert(entries, DerivedEntry("MaxSpeed", "Max speed (mph)", ComputeMaxSpeed, 1))
+        table.insert(entries, DerivedEntry("Acceleration", "Acceleration (0-60 ideal, s)", ComputeAcceleration, 2))
+        for index, spec in ipairs(MotorFields) do
+            if State.tune[spec.key] ~= nil then
+                table.insert(entries, TuneEntry(State.tune, spec, index + 2))
+            end
+        end
+    end
+
     table.sort(entries, function(left, right)
         local leftRank  = GroupRank[left.group] or 99
         local rightRank = GroupRank[right.group] or 99
         if leftRank ~= rightRank then
             return leftRank < rightRank
+        end
+        if left.group == "Motor" then
+            return (left.order or 0) < (right.order or 0)
         end
         return left.key < right.key
     end)
@@ -1232,6 +1708,18 @@ local function RenderPropertyList()
             currentGroup = entry.group
             order = order + 1
             MonoUI.Heading(list, order, currentGroup)
+            if currentGroup == "Motor" then
+                order = order + 1
+                MonoUI.Texted(list, {
+                    Text        = "Motor changes apply after you exit and re-enter the vehicle · top two rows derived",
+                    Size        = Theme.Type.Support,
+                    Tint        = "Muted",
+                    Bold        = false,
+                    Size2       = UDim2.new(1, 0, 0, 14),
+                    LayoutOrder = order,
+                    ZIndex      = 3,
+                })
+            end
         end
         order = order + 1
         CreatePropertyRow(list, order, entry)
@@ -1282,7 +1770,7 @@ local function CreateCheckboxRow(parent, order, entry)
     }
 
     MonoUI.Texted(row, {
-        Text     = string.format("%s · %s", entry.group, entry.key),
+        Text     = string.format("%s · %s", entry.group, entry.label),
         Size     = Theme.Type.Body,
         Tint     = "Text",
         Bold     = false,
@@ -1309,7 +1797,9 @@ end
 
 local function SetAllSelected(selected)
     for _, entry in ipairs(State.entries) do
-        State.selection[entry.id] = selected
+        if not entry.readOnly then
+            State.selection[entry.id] = selected
+        end
     end
     for _, refresh in ipairs(State.checkboxRefreshers) do
         refresh()
@@ -1317,12 +1807,22 @@ local function SetAllSelected(selected)
     UpdateSnapshotStatus()
 end
 
+local function SelectableCount()
+    local count = 0
+    for _, entry in ipairs(State.entries) do
+        if not entry.readOnly then
+            count = count + 1
+        end
+    end
+    return count
+end
+
 function UpdateSnapshotStatus()
     local label = State.panelStatus
     if label == nil then
         return
     end
-    local parts = { string.format("%d of %d properties selected", CountSelected(), #State.entries) }
+    local parts = { string.format("%d of %d properties selected", CountSelected(), SelectableCount()) }
     if State.snapshot ~= nil then
         table.insert(parts, string.format("snapshot: %d properties at %s", State.snapshot.count, State.snapshot.savedAt))
     else
@@ -1413,8 +1913,12 @@ local function RenderSnapshotPanel()
             LayoutOrder = 1,
         })
     else
-        for index, entry in ipairs(State.entries) do
-            CreateCheckboxRow(selectionScroller, index, entry)
+        local checkboxOrder = 0
+        for _, entry in ipairs(State.entries) do
+            if not entry.readOnly then
+                checkboxOrder = checkboxOrder + 1
+                CreateCheckboxRow(selectionScroller, checkboxOrder, entry)
+            end
         end
     end
 
@@ -1508,10 +2012,29 @@ function BindVehicle()
     local car = sessionVehicles and sessionVehicles:FindFirstChild(Player.Name .. "-Car")
 
     DisconnectCar()
+    State.pollToken    = State.pollToken + 1
     State.car          = car
     State.wheels       = car and car:FindFirstChild("Wheels")
+    State.tune         = nil
+    State.tuneModule   = nil
+
+    if car ~= nil then
+        State.tuneModule = car:FindFirstChild("A-Chassis Tune")
+        if State.tuneModule ~= nil then
+            local loaded, tune = pcall(require, State.tuneModule)
+            if loaded and type(tune) == "table" then
+                State.tune = tune
+            else
+                LogError(string.format("A-Chassis Tune could not be read: %s", tostring(tune)))
+            end
+        else
+            LogError("This vehicle has no A-Chassis Tune - motor properties are unavailable")
+        end
+    end
+
     State.entries      = CollectEntries()
     State.structureKey = StructureSignature()
+    StartTunePolling(State.pollToken)
 
     if car == nil then
         LogError("No vehicle is spawned for " .. Player.Name .. " - waiting for one")
@@ -1521,12 +2044,12 @@ function BindVehicle()
 
     table.insert(State.carConnections, car.AttributeChanged:Connect(ScheduleStructureCheck))
     table.insert(State.carConnections, car.ChildAdded:Connect(function(child)
-        if child.Name == "Wheels" then
+        if child.Name == "Wheels" or child.Name == "A-Chassis Tune" then
             task.defer(BindVehicle)
         end
     end))
     table.insert(State.carConnections, car.ChildRemoved:Connect(function(child)
-        if child.Name == "Wheels" then
+        if child.Name == "Wheels" or child.Name == "A-Chassis Tune" then
             task.defer(BindVehicle)
         end
     end))
@@ -1586,7 +2109,7 @@ local function CreateInterface()
         return order
     end
 
-    local headerRow = MonoUI.Row(State.content, NextOrder(), 96)
+    local headerRow = MonoUI.Row(State.content, NextOrder(), 150)
     MonoUI.Sticker(headerRow, {
         Color  = "Well",
         Alpha  = Theme.WellAlpha,
@@ -1678,10 +2201,56 @@ local function CreateInterface()
         Size                   = footerCell,
         LayoutOrder            = 3,
     }
+
+    -- The display spins ten degrees a second while nothing is dragging it. One loop for the app,
+    -- reading whichever model the current header built, so a rebuilt header needs no new loop.
+    table.insert(State.globalConnections, RunService.RenderStepped:Connect(function(deltaTime)
+        if State.viewportDisplay == nil or State.window == nil or not State.window.visible then
+            return
+        end
+        -- A mouse-up can be swallowed by the button that took the press. If the button is no
+        -- longer down, the drag is over whether or not the release event arrived.
+        if ViewportDrag.active
+            and ViewportDrag.pointer == Enum.UserInputType.MouseButton1
+            and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+        then
+            ViewportDrag.active = false
+            ViewportDrag.pointer = nil
+        end
+        if not ViewportDrag.active then
+            State.viewportYaw = (State.viewportYaw + 10 * deltaTime) % 360
+        end
+        ApplyDisplayTransform()
+    end))
+
+    table.insert(State.globalConnections, UserInputService.InputChanged:Connect(function(input)
+        if not ViewportDrag.active then
+            return
+        end
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        local position = Vector2.new(input.Position.X, input.Position.Y)
+        local delta = position - ViewportDrag.last
+        ViewportDrag.last = position
+        State.viewportYaw = (State.viewportYaw + delta.X * 0.45) % 360
+        State.viewportPitch = math.clamp(State.viewportPitch + delta.Y * 0.3, -20, 20)
+    end))
+
+    table.insert(State.globalConnections, UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            ViewportDrag.active = false
+            ViewportDrag.pointer = nil
+        end
+    end))
 end
 
 function Unload()
     LogInfo("Unloading the vehicle property editor")
+    State.pollToken = State.pollToken + 1
+    State.viewport = nil
+    State.viewportDisplay = nil
+    State.viewportCenter = nil
     for _, connection in ipairs(State.globalConnections) do
         pcall(function()
             connection:Disconnect()
