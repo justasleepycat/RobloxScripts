@@ -3427,25 +3427,42 @@ function MonoUI:CreatePlayerList(settings)
     end
 
     local function Build()
-        local gui = Element {
-            ClassName = "ScreenGui", Parent = UiContainer(),
-            Name = settings.GuiName or "MonoUIPlayerList",
-            ResetOnSpawn = false, IgnoreGuiInset = true,
-            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-            DisplayOrder = settings.DisplayOrder or 2147483001,
-        }
+        local embedded = settings.Parent ~= nil
+        local gui
+
+        if embedded then
+            gui = Element {
+                ClassName = "Frame", Parent = settings.Parent,
+                Name = settings.GuiName or "MonoUIPlayerList",
+                BackgroundTransparency = 1, BorderSizePixel = 0,
+                Position = settings.Position or UDim2.fromOffset(0, 0),
+                Size = UDim2.fromOffset(width, height),
+                ZIndex = settings.ZIndex or 60,
+            }
+        else
+            gui = Element {
+                ClassName = "ScreenGui", Parent = UiContainer(),
+                Name = settings.GuiName or "MonoUIPlayerList",
+                ResetOnSpawn = false, IgnoreGuiInset = true,
+                ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+                DisplayOrder = settings.DisplayOrder or 2147483001,
+            }
+        end
         list.Gui = gui
 
         local frame = Element {
             ClassName = "Frame", Parent = gui, Name = "PlayerListFrame",
             BackgroundColor3 = Theme.Surface, BackgroundTransparency = Theme.WindowTransparency,
-            BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0),
-            Position = settings.Position or UDim2.new(1, -20, 0, 20),
-            Size = UDim2.fromOffset(width, 440), ZIndex = 5,
+            BorderSizePixel = 0,
+            AnchorPoint = embedded and Vector2.new(0, 0) or Vector2.new(1, 0),
+            Position = embedded and UDim2.fromOffset(0, 0) or settings.Position or UDim2.new(1, -20, 0, 20),
+            Size = UDim2.fromOffset(width, height), ZIndex = 5,
         }
         Sticker(frame, {
-            Color = "Surface", Alpha = Theme.WindowTransparency, Corner = "Radius",
-            Stroke = "Outline", Rim = true, Glass = true,
+            Color = "Surface", Alpha = Theme.WindowTransparency,
+            Corner = embedded and 0 or "Radius",
+            Stroke = if embedded then nil else "Outline",
+            Rim = not embedded, Glass = true,
         })
         list.Frame = frame
 
@@ -3576,6 +3593,8 @@ function MonoUI:CreatePlayerInfo(settings)
         DragConnection = nil,
         Dragging = false,
         DragOffset = Vector2.zero,
+        TeleportDragging = false,
+        TeleportDragOffset = Vector2.zero,
     }
 
     local function Label(parent, name, text, size, color, position, size2, zIndex)
@@ -3794,7 +3813,22 @@ function MonoUI:CreatePlayerInfo(settings)
             Rim = true,
             Glass = true,
         })
-        Label(dialog, "Title", "TELEPORT TARGET", 11, Theme.Text, UDim2.fromOffset(12, 8), UDim2.fromOffset(276, 18), 51).Font = Enum.Font.GothamBold
+        local dialogTitleBar = Element {
+            ClassName = "TextButton", Parent = dialog, Name = "TitleBar",
+            BackgroundTransparency = 1, AutoButtonColor = false, Text = "",
+            Size = UDim2.new(1, 0, 0, 28), ZIndex = 53,
+        }
+        Label(dialogTitleBar, "Title", "TELEPORT TARGET", 11, Theme.Text, UDim2.fromOffset(12, 8), UDim2.fromOffset(276, 18), 54).Font = Enum.Font.GothamBold
+        dialogTitleBar.InputBegan:Connect(function(inputObject)
+            if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1
+                and inputObject.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+            local mouse = UserInput:GetMouseLocation()
+            local position = dialog.Position
+            info.TeleportDragging = true
+            info.TeleportDragOffset = mouse - Vector2.new(position.X.Offset, position.Y.Offset)
+        end)
         local input = Element {
             ClassName = "TextBox", Parent = dialog, Name = "Coordinates",
             BackgroundColor3 = Theme.Well, BackgroundTransparency = Theme.WellAlpha, BorderSizePixel = 0,
@@ -3850,6 +3884,9 @@ function MonoUI:CreatePlayerInfo(settings)
             self.TeleportPicker:Destroy()
             self.TeleportPicker = nil
         end
+        if self.TeleportDialog then
+            self.TeleportDialog.Size = UDim2.fromOffset(300, 140)
+        end
     end
 
     function info:ToggleTeleportPicker()
@@ -3862,18 +3899,16 @@ function MonoUI:CreatePlayerInfo(settings)
         end
 
         local dialog = self.TeleportDialog
-        local position = dialog and dialog.AbsolutePosition or Vector2.zero
+        local pickerHeight = 250
         local picker
 
         picker = MonoUI:CreatePlayerList({
-            Width = 332,
-            Height = 300,
+            Parent = dialog,
+            Position = UDim2.fromOffset(0, 140),
+            Width = 300,
+            Height = pickerHeight,
             GuiName = "MonoUITeleportPicker",
-            DisplayOrder = 2147483004,
-            Position = UDim2.fromOffset(
-                math.max(8, math.floor(position.X - 340)),
-                math.max(8, math.floor(position.Y))
-            ),
+            ZIndex = 52,
             Title = settings.TeleportPickerTitle or "TELEPORT TO",
             SearchPlaceholder = "Search players...",
             GetRows = settings.GetTeleportRows,
@@ -3915,6 +3950,9 @@ function MonoUI:CreatePlayerInfo(settings)
         })
 
         self.TeleportPicker = picker
+        if dialog then
+            dialog.Size = UDim2.fromOffset(300, 140 + pickerHeight)
+        end
     end
 
     function info:SubmitTeleport()
@@ -4064,7 +4102,7 @@ function MonoUI:CreatePlayerInfo(settings)
 
     Ensure()
     info.DragConnection = UserInput.InputChanged:Connect(function(inputObject)
-        if not info.IsOpen or not info.Dragging or not info.Frame then
+        if not info.IsOpen then
             return
         end
 
@@ -4074,6 +4112,19 @@ function MonoUI:CreatePlayerInfo(settings)
         end
 
         local mouse = UserInput:GetMouseLocation()
+
+        if info.TeleportDragging and info.TeleportDialog then
+            info.TeleportDialog.Position = UDim2.fromOffset(
+                math.floor(mouse.X - info.TeleportDragOffset.X),
+                math.floor(mouse.Y - info.TeleportDragOffset.Y)
+            )
+            return
+        end
+
+        if not info.Dragging or not info.Frame then
+            return
+        end
+
         info.Frame.Position = UDim2.fromOffset(
             math.floor(mouse.X - info.DragOffset.X),
             math.floor(mouse.Y - info.DragOffset.Y)
@@ -4083,6 +4134,7 @@ function MonoUI:CreatePlayerInfo(settings)
         if inputObject.UserInputType == Enum.UserInputType.MouseButton1
             or inputObject.UserInputType == Enum.UserInputType.Touch then
             info.Dragging = false
+            info.TeleportDragging = false
         end
     end)
 
