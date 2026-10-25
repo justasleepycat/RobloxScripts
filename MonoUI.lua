@@ -1,4 +1,4 @@
--- Latest update: 10/25/2026 4:37 PM
+-- Latest update: 10/25/2026 4:43 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -3199,13 +3199,13 @@ function MonoUI:CreatePlayerList(settings)
             ClassName              = "TextButton",
             Parent                 = parent,
             Name                   = name,
-            BackgroundColor3       = Theme.Well,
-            BackgroundTransparency = 0.1,
+            BackgroundColor3       = Theme.Row,
+            BackgroundTransparency = 0.08,
             BorderSizePixel        = 0,
             AutoButtonColor        = false,
             Font                   = Enum.Font.GothamBold,
             TextSize               = Theme.Type.Support,
-            TextColor3             = Theme.Text,
+            TextColor3             = Theme.Invert,
             Text                   = text,
             Position               = position,
             Size                   = size,
@@ -3230,9 +3230,12 @@ function MonoUI:CreatePlayerList(settings)
         list.CollapseButton.Text = list.Collapsed and "›" or "⌄"
         list.ViewButton.Text = list.Grid and "GRID" or "LIST"
         list.SortButton.Text = string.format("SORT %s %s", string.upper(list.Sort), list.Ascending and "↑" or "↓")
-        list.SpeedButton.BackgroundColor3 = list.ShowSpeed and Color3.fromRGB(35, 95, 65) or Theme.Well
-        list.RankButton.BackgroundColor3 = list.ShowRank and Color3.fromRGB(35, 95, 65) or Theme.Well
-        list.DistanceButton.BackgroundColor3 = list.ShowDistance and Color3.fromRGB(35, 95, 65) or Theme.Well
+        list.SpeedButton.BackgroundColor3 = list.ShowSpeed and Color3.fromRGB(35, 95, 65) or Theme.Row
+        list.RankButton.BackgroundColor3 = list.ShowRank and Color3.fromRGB(35, 95, 65) or Theme.Row
+        list.DistanceButton.BackgroundColor3 = list.ShowDistance and Color3.fromRGB(35, 95, 65) or Theme.Row
+        list.SpeedButton.TextColor3 = list.ShowSpeed and Theme.Text or Theme.Invert
+        list.RankButton.TextColor3 = list.ShowRank and Theme.Text or Theme.Invert
+        list.DistanceButton.TextColor3 = list.ShowDistance and Theme.Text or Theme.Invert
         list.CaseButton.Text = list.CaseSensitive and "CASE: ON" or "CASE: OFF"
         list.CaseButton.TextColor3 = list.CaseSensitive and Color3.fromRGB(35, 255, 120) or muted
 
@@ -3462,8 +3465,8 @@ function MonoUI:CreatePlayerList(settings)
             row.GPS.TextColor3 = rowData.Gps and Color3.fromRGB(35, 255, 120) or Color3.fromRGB(255, 80, 80)
             row.State.Text = tostring(rowData.State or "Unknown")
             row.State.TextColor3 = rowData.StateColor or muted
-            row.Friend.BackgroundColor3 = relation == "Friend" and Color3.fromRGB(50, 150, 85) or Theme.Well
-            row.Enemy.BackgroundColor3 = relation == "Enemy" and Color3.fromRGB(170, 55, 55) or Theme.Well
+            row.Friend.BackgroundColor3 = relation == "Friend" and Color3.fromRGB(50, 150, 85) or Theme.Row
+            row.Enemy.BackgroundColor3 = relation == "Enemy" and Color3.fromRGB(170, 55, 55) or Theme.Row
         end
     end
 
@@ -3647,13 +3650,13 @@ function MonoUI:CreatePlayerInfo(settings)
             ClassName              = "TextButton",
             Parent                 = parent,
             Name                   = name,
-            BackgroundColor3       = Theme.Well,
-            BackgroundTransparency = 0.1,
+            BackgroundColor3       = Theme.Row,
+            BackgroundTransparency = 0.08,
             BorderSizePixel        = 0,
             AutoButtonColor        = false,
             Font                   = Enum.Font.GothamBold,
             TextSize               = Theme.Type.Support,
-            TextColor3             = Theme.Text,
+            TextColor3             = Theme.Invert,
             Text                   = text,
             Position               = position,
             Size                   = size,
@@ -3923,8 +3926,10 @@ function MonoUI:CreatePlayerInfo(settings)
         self.Title.Text = profile.Title or ""
         self.InfoText.Text = profile.Text or ""
         local relation = profile.Relation or "Neutral"
-        self.RelationButtons.Friend.BackgroundColor3 = relation == "Friend" and Color3.fromRGB(50, 150, 85) or Theme.Well
-        self.RelationButtons.Enemy.BackgroundColor3 = relation == "Enemy" and Color3.fromRGB(170, 55, 55) or Theme.Well
+        self.RelationButtons.Friend.BackgroundColor3 = relation == "Friend" and Color3.fromRGB(50, 150, 85) or Theme.Row
+        self.RelationButtons.Enemy.BackgroundColor3 = relation == "Enemy" and Color3.fromRGB(170, 55, 55) or Theme.Row
+        self.RelationButtons.Friend.TextColor3 = relation == "Friend" and Theme.Text or Theme.Invert
+        self.RelationButtons.Enemy.TextColor3 = relation == "Enemy" and Theme.Text or Theme.Invert
 
         local actionSignature = ActionSignature(profile.PlayerActions) .. "|" .. ActionSignature(profile.VehicleActions)
         if self.ActionKey ~= actionSignature then
