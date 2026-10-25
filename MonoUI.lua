@@ -275,7 +275,7 @@ local SheenTransparency = NumberSequence.new {
 
 -- 0.5 -> pill, 12 -> pixels, "RowRadius" -> that palette entry
 local function ResolveRadius(corner)
-    if type(corner) == "string" then return UDim.new(0, Theme[corner] or Theme.WellRadius) end
+    if type(corner) == "string" then return UDim.new(0, Theme[corner] or Theme.RowRadius) end
     if type(corner) ~= "number" then return UDim.new(0, Theme.RowRadius) end
     if corner < 1 then return UDim.new(corner, 0) end
     return UDim.new(0, corner)
@@ -3200,18 +3200,24 @@ function MonoUI:CreatePlayerList(settings)
             Parent                 = parent,
             Name                   = name,
             BackgroundColor3       = Theme.Row,
-            BackgroundTransparency = 0.08,
+            BackgroundTransparency = Theme.RowAlpha,
             BorderSizePixel        = 0,
             AutoButtonColor        = false,
             Font                   = Enum.Font.GothamBold,
             TextSize               = Theme.Type.Support,
-            TextColor3             = Theme.Invert,
+            TextColor3             = Theme.Text,
             Text                   = text,
             Position               = position,
             Size                   = size,
             ZIndex                 = 13,
         }
-        Element { ClassName = "UICorner", Parent = button, CornerRadius = UDim.new(0, 4) }
+        Sticker(button, {
+            Color = "Row",
+            Alpha = Theme.RowAlpha,
+            Corner = "RowRadius",
+            Stroke = "Line",
+            Glass = true,
+        })
         if callback then
             button.MouseButton1Click:Connect(callback)
         end
@@ -3276,14 +3282,20 @@ function MonoUI:CreatePlayerList(settings)
             ClassName              = "TextButton",
             Parent                 = list.Body,
             Name                   = "Player_" .. tostring(rowData.Id or rowData.Name or "Row"),
-            BackgroundColor3       = Theme.Surface,
-            BackgroundTransparency = 0.12,
+            BackgroundColor3       = Theme.Row,
+            BackgroundTransparency = Theme.RowAlpha,
             BorderSizePixel        = 0,
             AutoButtonColor        = false,
             Text                   = "",
             ZIndex                 = 11,
         }
-        Element { ClassName = "UICorner", Parent = frame, CornerRadius = UDim.new(0, 4) }
+        Sticker(frame, {
+            Color = "Row",
+            Alpha = 0.94,
+            Corner = "RowRadius",
+            Stroke = "Line",
+            Glass = true,
+        })
 
         local avatar = Element {
             ClassName              = "ImageLabel",
@@ -3487,16 +3499,23 @@ function MonoUI:CreatePlayerList(settings)
             Parent                 = gui,
             Name                   = "PlayerListFrame",
             BackgroundColor3       = Theme.Surface,
-            BackgroundTransparency = 0.04,
+            BackgroundTransparency = Theme.WindowAlpha,
             BorderSizePixel        = 0,
             AnchorPoint            = Vector2.new(1, 0),
             Position               = settings.Position or UDim2.new(1, -20, 0, 20),
             Size                   = UDim2.fromOffset(width, 440),
             ZIndex                 = 5,
         }
-        Element { ClassName = "UICorner", Parent = frame, CornerRadius = UDim.new(0, 8) }
-        Element { ClassName = "UIStroke", Parent = frame, Color = Theme.Line, Transparency = 0.65, Thickness = 1 }
+        Sticker(frame, {
+            Color = "Surface",
+            Alpha = Theme.WindowAlpha,
+            Corner = "Radius",
+            Stroke = "Outline",
+            Rim = true,
+            Glass = true,
+        })
         list.Frame = frame
+        MonoUI:EnableLiquidBlur(frame, { Refresh = 0.25 })
 
         local toolbar = Element {
             ClassName = "Frame", Parent = frame, Name = "Toolbar",
@@ -3541,12 +3560,17 @@ function MonoUI:CreatePlayerList(settings)
         list.SearchRow = searchRow
         local search = Element {
             ClassName = "TextBox", Parent = searchRow, Name = "Search",
-            BackgroundColor3 = Theme.Well, BackgroundTransparency = 0.1, BorderSizePixel = 0,
+            BackgroundColor3 = Theme.Well, BackgroundTransparency = Theme.WellAlpha, BorderSizePixel = 0,
             Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Theme.Text,
             PlaceholderText = "Search players...", PlaceholderColor3 = muted,
             Text = "", ClearTextOnFocus = false, Size = UDim2.new(1, -92, 0, 26), ZIndex = 7,
         }
-        Element { ClassName = "UICorner", Parent = search, CornerRadius = UDim.new(0, 4) }
+        Sticker(search, {
+            Color = "Well",
+            Alpha = Theme.WellAlpha,
+            Corner = "RowRadius",
+            Stroke = "Line",
+        })
         search:GetPropertyChangedSignal("Text"):Connect(function()
             list.SearchText = search.Text
             list:Refresh()
@@ -3651,18 +3675,24 @@ function MonoUI:CreatePlayerInfo(settings)
             Parent                 = parent,
             Name                   = name,
             BackgroundColor3       = Theme.Row,
-            BackgroundTransparency = 0.08,
+            BackgroundTransparency = Theme.RowAlpha,
             BorderSizePixel        = 0,
             AutoButtonColor        = false,
             Font                   = Enum.Font.GothamBold,
             TextSize               = Theme.Type.Support,
-            TextColor3             = Theme.Invert,
+            TextColor3             = Theme.Text,
             Text                   = text,
             Position               = position,
             Size                   = size,
             ZIndex                 = 13,
         }
-        Element { ClassName = "UICorner", Parent = button, CornerRadius = UDim.new(0, 4) }
+        Sticker(button, {
+            Color = "Row",
+            Alpha = Theme.RowAlpha,
+            Corner = "RowRadius",
+            Stroke = "Line",
+            Glass = true,
+        })
         if callback then
             button.MouseButton1Click:Connect(callback)
         end
@@ -3687,13 +3717,19 @@ function MonoUI:CreatePlayerInfo(settings)
             Parent                 = parent,
             Name                   = name,
             BackgroundColor3       = Theme.Well,
-            BackgroundTransparency = 0.15,
+            BackgroundTransparency = Theme.WellAlpha,
             BorderSizePixel        = 0,
             Position               = position,
             Size                   = size,
             ZIndex                 = 11,
         }
-        Element { ClassName = "UICorner", Parent = panel, CornerRadius = UDim.new(0, 6) }
+        Sticker(panel, {
+            Color = "Well",
+            Alpha = Theme.WellAlpha,
+            Corner = "RowRadius",
+            Stroke = "Line",
+            Glass = true,
+        })
 
         local viewport = Element {
             ClassName              = "ViewportFrame",
@@ -3765,15 +3801,22 @@ function MonoUI:CreatePlayerInfo(settings)
             Parent                 = gui,
             Name                   = "PlayerInfoFrame",
             BackgroundColor3       = Theme.Surface,
-            BackgroundTransparency = 0.04,
+            BackgroundTransparency = Theme.WindowAlpha,
             BorderSizePixel        = 0,
             Size                   = UDim2.fromOffset(width, height),
             Visible                = false,
             ZIndex                 = 10,
         }
-        Element { ClassName = "UICorner", Parent = frame, CornerRadius = UDim.new(0, 9) }
-        Element { ClassName = "UIStroke", Parent = frame, Color = Theme.Line, Transparency = 0.6, Thickness = 1 }
+        Sticker(frame, {
+            Color = "Surface",
+            Alpha = Theme.WindowAlpha,
+            Corner = "Radius",
+            Stroke = "Outline",
+            Rim = true,
+            Glass = true,
+        })
         info.Frame = frame
+        MonoUI:EnableLiquidBlur(frame, { Refresh = 0.25 })
 
         local titleBar = Element {
             ClassName = "TextButton", Parent = frame, Name = "TitleBar",
@@ -3815,21 +3858,32 @@ function MonoUI:CreatePlayerInfo(settings)
 
         local dialog = Element {
             ClassName = "Frame", Parent = frame, Name = "TeleportDialog",
-            BackgroundColor3 = Theme.Surface, BackgroundTransparency = 0.02, BorderSizePixel = 0,
+            BackgroundColor3 = Theme.Surface, BackgroundTransparency = Theme.WindowAlpha, BorderSizePixel = 0,
             Position = UDim2.fromOffset(180, 140), Size = UDim2.fromOffset(300, 126),
             Visible = false, ZIndex = 50,
         }
-        Element { ClassName = "UICorner", Parent = dialog, CornerRadius = UDim.new(0, 6) }
-        Element { ClassName = "UIStroke", Parent = dialog, Color = Theme.Line, Transparency = 0.5, Thickness = 1 }
+        Sticker(dialog, {
+            Color = "Surface",
+            Alpha = Theme.WindowAlpha,
+            Corner = "Radius",
+            Stroke = "Outline",
+            Rim = true,
+            Glass = true,
+        })
         Label(dialog, "Title", "TELEPORT TARGET", 11, Theme.Text, UDim2.fromOffset(12, 8), UDim2.fromOffset(276, 18), 51).Font = Enum.Font.GothamBold
         local input = Element {
             ClassName = "TextBox", Parent = dialog, Name = "Coordinates",
-            BackgroundColor3 = Theme.Well, BackgroundTransparency = 0.05, BorderSizePixel = 0,
+            BackgroundColor3 = Theme.Well, BackgroundTransparency = Theme.WellAlpha, BorderSizePixel = 0,
             Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Theme.Text,
             PlaceholderText = "X, Y, Z", PlaceholderColor3 = muted, Text = "",
             ClearTextOnFocus = false, Position = UDim2.fromOffset(12, 30), Size = UDim2.fromOffset(276, 26), ZIndex = 52,
         }
-        Element { ClassName = "UICorner", Parent = input, CornerRadius = UDim.new(0, 4) }
+        Sticker(input, {
+            Color = "Well",
+            Alpha = Theme.WellAlpha,
+            Corner = "RowRadius",
+            Stroke = "Line",
+        })
         local errorLabel = Label(dialog, "Error", "", 9, settings.Danger or Color3.fromRGB(255, 95, 95), UDim2.fromOffset(12, 58), UDim2.fromOffset(276, 14), 51)
         errorLabel.TextYAlignment = Enum.TextYAlignment.Center
         info.TeleportDialog = dialog
@@ -4026,6 +4080,201 @@ function MonoUI:CreatePlayerInfo(settings)
     end)
 
     return info
+end
+
+--=== liquid blur (port of GlassmorphicUI Frost, blur-only) =================
+
+-- The reference separates backdrop sampling, reconstruction and frost. MonoUI only needs the
+-- frost/backdrop part: sample a low-resolution grid, blur it with a separable box pass, and upload
+-- the result to an EditableImage pane. Refraction and rim reconstruction remain MonoUI's normal
+-- Sticker layers.
+local function SampleAt(x, y, frame)
+    local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    local camera = Workspace.CurrentCamera
+    local r, g, b = 0, 0, 0
+    local alpha = 0
+
+    if playerGui then
+        local objects = playerGui:GetGuiObjectsAtPosition(x, y)
+        for index = #objects, 1, -1 do
+            local object = objects[index]
+            if object == frame then
+                break
+            end
+            local transparency = object.BackgroundTransparency
+            if transparency < 1 and object.BackgroundColor3 then
+                local source = object.BackgroundColor3
+                local weight = (1 - transparency) * (1 - alpha)
+                r += source.R * weight
+                g += source.G * weight
+                b += source.B * weight
+                alpha += weight
+            end
+        end
+    end
+
+    if alpha < 1 and camera then
+        local ray = camera:ViewportPointToRay(x, y)
+        local result = Workspace:Raycast(ray.Origin, ray.Direction * 2048)
+        if result and result.Instance:IsA("BasePart") then
+            local source = result.Instance.Color
+            local weight = 1 - alpha
+            r += source.R * weight
+            g += source.G * weight
+            b += source.B * weight
+        end
+    end
+
+    return math.clamp(r, 0, 1), math.clamp(g, 0, 1), math.clamp(b, 0, 1)
+end
+
+local function BoxBlur(bufferData, width, height, radius)
+    if radius <= 0 then
+        return
+    end
+    local length = width * height * 4
+    local scratch = buffer.create(length)
+    local span = radius * 2 + 1
+
+    for y = 0, height - 1 do
+        for x = 0, width - 1 do
+            local sr, sg, sb, sa = 0, 0, 0, 0
+            for offset = -radius, radius do
+                local sx = math.clamp(x + offset, 0, width - 1)
+                local index = (y * width + sx) * 4
+                sr += buffer.readu8(bufferData, index)
+                sg += buffer.readu8(bufferData, index + 1)
+                sb += buffer.readu8(bufferData, index + 2)
+                sa += buffer.readu8(bufferData, index + 3)
+            end
+            local index = (y * width + x) * 4
+            buffer.writeu8(scratch, index, math.floor(sr / span + 0.5))
+            buffer.writeu8(scratch, index + 1, math.floor(sg / span + 0.5))
+            buffer.writeu8(scratch, index + 2, math.floor(sb / span + 0.5))
+            buffer.writeu8(scratch, index + 3, math.floor(sa / span + 0.5))
+        end
+    end
+
+    for x = 0, width - 1 do
+        for y = 0, height - 1 do
+            local sr, sg, sb, sa = 0, 0, 0, 0
+            for offset = -radius, radius do
+                local sy = math.clamp(y + offset, 0, height - 1)
+                local index = (sy * width + x) * 4
+                sr += buffer.readu8(scratch, index)
+                sg += buffer.readu8(scratch, index + 1)
+                sb += buffer.readu8(scratch, index + 2)
+                sa += buffer.readu8(scratch, index + 3)
+            end
+            local index = (y * width + x) * 4
+            buffer.writeu8(bufferData, index, math.floor(sr / span + 0.5))
+            buffer.writeu8(bufferData, index + 1, math.floor(sg / span + 0.5))
+            buffer.writeu8(bufferData, index + 2, math.floor(sb / span + 0.5))
+            buffer.writeu8(bufferData, index + 3, math.floor(sa / span + 0.5))
+        end
+    end
+end
+
+function MonoUI:EnableLiquidBlur(frame, settings)
+    if not frame or frame:GetAttribute("MonoUILiquidBlur") then
+        return nil
+    end
+    settings = settings or {}
+
+    local assetService = game:GetService("AssetService")
+    if not assetService or type(assetService.CreateEditableImage) ~= "function" then
+        return nil
+    end
+
+    local created, image = pcall(function()
+        return assetService:CreateEditableImage({ Size = Vector2.new(64, 64) })
+    end)
+    if not created or not image then
+        return nil
+    end
+
+    frame:SetAttribute("MonoUILiquidBlur", true)
+
+    local pane = Element {
+        ClassName              = "ImageLabel",
+        Parent                 = frame,
+        Name                   = "MonoUILiquidBlurPane",
+        BackgroundTransparency = 1,
+        BorderSizePixel        = 0,
+        Position               = UDim2.fromOffset(0, 0),
+        Size                   = UDim2.fromScale(1, 1),
+        ScaleType              = Enum.ScaleType.Stretch,
+        ImageTransparency      = 0.12,
+        ZIndex                 = -10,
+    }
+    pane.ImageContent = Content.fromObject(image)
+
+    local resolution = 64
+    local pixels = buffer.create(resolution * resolution * 4)
+    local running = true
+
+    local function Resize(size)
+        local width = math.max(1, math.min(48, math.floor(size.X / 12 + 0.5)))
+        local height = math.max(1, math.min(48, math.floor(size.Y / 12 + 0.5)))
+        if width == resolution and height == resolution then
+            return width, height
+        end
+
+        resolution = width
+        pixels = buffer.create(width * height * 4)
+        local ok, resized = pcall(function()
+            return assetService:CreateEditableImage({ Size = Vector2.new(width, height) })
+        end)
+        if ok and resized then
+            image:Destroy()
+            image = resized
+            pane.ImageContent = Content.fromObject(image)
+        end
+        return width, height
+    end
+
+    task.spawn(function()
+        while running and frame.Parent do
+            local size = frame.AbsoluteSize
+            if frame.Visible and size.X > 0 and size.Y > 0 then
+                local width, height = Resize(size)
+                local origin = frame.AbsolutePosition
+                for y = 0, height - 1 do
+                    for x = 0, width - 1 do
+                        local wx = origin.X + (x + 0.5) * (size.X / width)
+                        local wy = origin.Y + (y + 0.5) * (size.Y / height)
+                        local r, g, b = SampleAt(wx, wy, frame)
+                        local index = (y * width + x) * 4
+                        buffer.writeu8(pixels, index, math.floor(r * 255 + 0.5))
+                        buffer.writeu8(pixels, index + 1, math.floor(g * 255 + 0.5))
+                        buffer.writeu8(pixels, index + 2, math.floor(b * 255 + 0.5))
+                        buffer.writeu8(pixels, index + 3, 255)
+                    end
+                end
+                BoxBlur(pixels, width, height, math.max(1, math.floor(math.min(width, height) / 45)))
+                pcall(function()
+                    image:WritePixelsBuffer(Vector2.zero, Vector2.new(width, height), pixels)
+                end)
+            end
+            task.wait(settings.Refresh or 0.2)
+        end
+        pcall(function()
+            image:Destroy()
+        end)
+        if pane.Parent then
+            pane:Destroy()
+        end
+    end)
+
+    return {
+        Destroy = function()
+            running = false
+            if pane.Parent then
+                pane:Destroy()
+            end
+            frame:SetAttribute("MonoUILiquidBlur", nil)
+        end,
+    }
 end
 
 --=== export ================================================================
