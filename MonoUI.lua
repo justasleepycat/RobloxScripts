@@ -3140,10 +3140,7 @@ function MonoUI:CreatePlayerList(settings)
     local gridWidth  = settings.GridCellWidth or 206
     local gridHeight = settings.GridCellHeight or 62
     local muted      = settings.Muted or Theme.Muted
-    local relationColors = settings.RelationColors or {
-        Friend = Color3.fromRGB(80, 235, 140),
-        Enemy  = Color3.fromRGB(255, 105, 105),
-    }
+    local relationColors = settings.RelationColors or {}
 
     local list = {
         Gui       = nil,
@@ -3237,15 +3234,15 @@ function MonoUI:CreatePlayerList(settings)
         list.ViewButton.Text = list.Grid and "GRID" or "LIST"
         list.SortButton.Text = string.format("SORT %s %s", string.upper(list.Sort), list.Ascending and "↑" or "↓")
         local function StyleToggle(button, active)
-            button.BackgroundColor3 = active and Color3.fromRGB(35, 95, 65) or Theme.Row
+            button.BackgroundColor3 = active and (settings.ActiveColor or Theme.Text) or Theme.Row
             button.BackgroundTransparency = active and 0.42 or Theme.RowAlpha
-            button.TextColor3 = Theme.Text
+            button.TextColor3 = active and (settings.ActiveTextColor or Theme.Text) or Theme.Text
         end
         StyleToggle(list.SpeedButton, list.ShowSpeed)
         StyleToggle(list.RankButton, list.ShowRank)
         StyleToggle(list.DistanceButton, list.ShowDistance)
         list.CaseButton.Text = list.CaseSensitive and "CASE: ON" or "CASE: OFF"
-        list.CaseButton.TextColor3 = list.CaseSensitive and Color3.fromRGB(80, 235, 140) or muted
+        list.CaseButton.TextColor3 = list.CaseSensitive and (settings.ActiveColor or Theme.Text) or muted
 
         local mode = list.Grid and "Grid" or "List"
         if list.RowMode ~= mode then
@@ -3315,22 +3312,22 @@ function MonoUI:CreatePlayerList(settings)
 
         local name = Label(frame, "Name", rowData.Name or "", 11, Theme.Text, UDim2.fromOffset(8, 0), UDim2.fromOffset(150, rowHeight), 12)
         name.Font = Enum.Font.GothamBold
-        local rank = Label(frame, "Rank", rowData.Rank or "", 10, muted, UDim2.fromOffset(165, 0), UDim2.fromOffset(70, rowHeight), 12)
+        local rank = Label(frame, "Rank", rowData.Rank or settings.RankFallback or "", 10, muted, UDim2.fromOffset(165, 0), UDim2.fromOffset(70, rowHeight), 12)
         local distance = Label(frame, "Distance", "", 10, muted, UDim2.fromOffset(240, 0), UDim2.fromOffset(75, rowHeight), 12)
         local speed = Label(frame, "Speed", "", 10, muted, UDim2.fromOffset(320, 0), UDim2.fromOffset(70, rowHeight), 12)
-        local gps = Label(frame, "GPS", "GPS", 9, muted, UDim2.fromOffset(396, 0), UDim2.fromOffset(44, rowHeight), 12)
+        local gps = Label(frame, "GPS", rowData.GpsLabel or settings.GpsLabel or "", 9, muted, UDim2.fromOffset(396, 0), UDim2.fromOffset(44, rowHeight), 12)
         gps.Font = Enum.Font.GothamBold
         gps.TextXAlignment = Enum.TextXAlignment.Center
-        local state = Label(frame, "State", "", 9, muted, UDim2.fromOffset(444, 0), UDim2.fromOffset(150, rowHeight), 12)
+        local state = Label(frame, "State", rowData.State or settings.StateFallback or "", 9, muted, UDim2.fromOffset(444, 0), UDim2.fromOffset(150, rowHeight), 12)
         state.Font = Enum.Font.GothamBold
         state.TextXAlignment = Enum.TextXAlignment.Center
-        local friend = Button(frame, "Friend", "F", UDim2.new(1, -46, 0, 5), UDim2.fromOffset(18, 20), function()
+        local friend = Button(frame, "Friend", settings.FriendLabel or "", UDim2.new(1, -46, 0, 5), UDim2.fromOffset(18, 20), function()
             if settings.OnRelation then
                 settings.OnRelation(rowData.Id, "Friend")
             end
             list:Refresh()
         end)
-        local enemy = Button(frame, "Enemy", "E", UDim2.new(1, -24, 0, 5), UDim2.fromOffset(18, 20), function()
+        local enemy = Button(frame, "Enemy", settings.EnemyLabel or "", UDim2.new(1, -24, 0, 5), UDim2.fromOffset(18, 20), function()
             if settings.OnRelation then
                 settings.OnRelation(rowData.Id, "Enemy")
             end
@@ -3397,8 +3394,8 @@ function MonoUI:CreatePlayerList(settings)
             return type(row.Distance) == "number" and row.Distance == row.Distance and row.Distance or math.huge
         end
         if list.Sort == "Rank" then
-            local ranks = { Owner = 1, Admin = 2, Unranked = 3 }
-            return ranks[row.Rank] or 4
+            local ranks = settings.RankOrder or {}
+            return ranks[row.Rank] or math.huge
         end
         return string.lower(row.Name or "")
     end
@@ -3467,32 +3464,28 @@ function MonoUI:CreatePlayerList(settings)
             row.Frame.Visible = true
             row.Frame.LayoutOrder = index
             row.Name.Text = tostring(rowData.Name or "")
-            row.Name.TextColor3 = relationColors[relation] or Theme.Text
-            row.Rank.Text = tostring(rowData.Rank or "Unranked")
-            row.Rank.TextColor3 = rowData.Rank == "Owner" and Color3.fromRGB(255, 210, 90)
-                or rowData.Rank == "Admin" and Color3.fromRGB(80, 235, 140)
-                or muted
+            row.Name.TextColor3 = rowData.NameColor or relationColors[relation] or Theme.Text
+            row.Rank.Text = tostring(rowData.Rank or settings.RankFallback or "")
+            row.Rank.TextColor3 = rowData.RankColor or muted
             row.Rank.Visible = list.ShowRank
             row.Distance.Text = type(rowData.Distance) == "number"
-                and string.format("%.0f%s", rowData.Distance, rowData.Gps and " GPS" or "")
+                and string.format("%.0f%s", rowData.Distance, rowData.GpsLabel and (" " .. rowData.GpsLabel) or "")
                 or "N/A"
             row.Distance.Visible = list.ShowDistance
             row.Speed.Text = type(rowData.Speed) == "number" and string.format("%.0f mph", rowData.Speed) or "N/A"
-            row.Speed.TextColor3 = type(rowData.Speed) ~= "number" and muted
-                or rowData.Speed <= 25 and Color3.fromRGB(80, 235, 140)
-                or rowData.Speed <= 60 and Color3.fromRGB(255, 210, 90)
-                or Color3.fromRGB(255, 105, 105)
+            row.Speed.TextColor3 = rowData.SpeedColor or muted
             row.Speed.Visible = list.ShowSpeed
-            row.GPS.TextColor3 = rowData.Gps and Color3.fromRGB(80, 235, 140) or Color3.fromRGB(255, 105, 105)
-            row.State.Text = tostring(rowData.State or "Unknown")
-            row.State.TextColor3 = rowData.State == "Unknown" and muted or (rowData.StateColor or Theme.Text)
+            row.GPS.Text = rowData.GpsLabel or settings.GpsLabel or ""
+            row.GPS.TextColor3 = rowData.GpsColor or muted
+            row.State.Text = tostring(rowData.State or settings.StateFallback or "")
+            row.State.TextColor3 = rowData.StateColor or Theme.Text
             local function StyleRelation(button, active, color)
-                button.BackgroundColor3 = active and color or Theme.Row
+                button.BackgroundColor3 = active and (color or Theme.Row) or Theme.Row
                 button.BackgroundTransparency = active and 0.38 or Theme.RowAlpha
                 button.TextColor3 = Theme.Text
             end
-            StyleRelation(row.Friend, relation == "Friend", Color3.fromRGB(45, 145, 85))
-            StyleRelation(row.Enemy, relation == "Enemy", Color3.fromRGB(165, 55, 55))
+            StyleRelation(row.Friend, relation == "Friend", rowData.FriendColor or relationColors.Friend)
+            StyleRelation(row.Enemy, relation == "Enemy", rowData.EnemyColor or relationColors.Enemy)
         end
     end
 
@@ -3845,18 +3838,18 @@ function MonoUI:CreatePlayerInfo(settings)
         info.VehiclePanel = vehiclePanel
         info.VehicleViewport = vehicleViewport
 
-        info.VehicleEmpty = Label(vehiclePanel, "NoVehicle", "NO VEHICLE", 10, muted, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 13)
+        info.VehicleEmpty = Label(vehiclePanel, "NoVehicle", settings.NoVehicleLabel or "", 10, muted, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 13)
         info.VehicleEmpty.TextXAlignment = Enum.TextXAlignment.Center
         info.InfoText = Label(frame, "Info", "", 10, Theme.Text, UDim2.fromOffset(442, 40), UDim2.fromOffset(206, 300), 12)
 
         info.RelationButtons = {
-            Friend = Button(frame, "Friend", "FRIEND", UDim2.fromOffset(12, 366), UDim2.fromOffset(100, 24), function()
+            Friend = Button(frame, "Friend", settings.RelationLabels and settings.RelationLabels.Friend or "", UDim2.fromOffset(12, 366), UDim2.fromOffset(100, 24), function()
                 if info.Target and settings.OnRelation then
                     settings.OnRelation(info.Target, "Friend")
                     info:Update()
                 end
             end),
-            Enemy = Button(frame, "Enemy", "ENEMY", UDim2.fromOffset(120, 366), UDim2.fromOffset(100, 24), function()
+            Enemy = Button(frame, "Enemy", settings.RelationLabels and settings.RelationLabels.Enemy or "", UDim2.fromOffset(120, 366), UDim2.fromOffset(100, 24), function()
                 if info.Target and settings.OnRelation then
                     settings.OnRelation(info.Target, "Enemy")
                     info:Update()
@@ -3988,13 +3981,14 @@ function MonoUI:CreatePlayerInfo(settings)
         self.Title.Text = profile.Title or ""
         self.InfoText.Text = profile.Text or ""
         local relation = profile.Relation or "Neutral"
+        local relationColors = settings.RelationColors or {}
         local function StyleRelationButton(button, active, color)
-            button.BackgroundColor3 = active and color or Theme.Row
+            button.BackgroundColor3 = active and (color or Theme.Row) or Theme.Row
             button.BackgroundTransparency = active and 0.38 or Theme.RowAlpha
             button.TextColor3 = Theme.Text
         end
-        StyleRelationButton(self.RelationButtons.Friend, relation == "Friend", Color3.fromRGB(45, 145, 85))
-        StyleRelationButton(self.RelationButtons.Enemy, relation == "Enemy", Color3.fromRGB(165, 55, 55))
+        StyleRelationButton(self.RelationButtons.Friend, relation == "Friend", relationColors.Friend)
+        StyleRelationButton(self.RelationButtons.Enemy, relation == "Enemy", relationColors.Enemy)
 
         local actionSignature = ActionSignature(profile.PlayerActions) .. "|" .. ActionSignature(profile.VehicleActions)
         if self.ActionKey ~= actionSignature then
