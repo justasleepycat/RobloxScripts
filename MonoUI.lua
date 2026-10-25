@@ -3140,137 +3140,123 @@ function MonoUI:CreatePlayerList(settings)
     local gridWidth  = settings.GridCellWidth or 206
     local gridHeight = settings.GridCellHeight or 62
     local muted      = settings.Muted or Theme.Muted
-    local relationColors = settings.RelationColors or {}
+    local columns    = settings.Columns or {}
+    local filters    = settings.Filters or {}
+    local sorters    = settings.Sorters or {}
+    local rowActions = settings.RowActions or {}
 
     local list = {
-        Gui       = nil,
-        Frame     = nil,
-        Body      = nil,
-        Layout    = nil,
-        Toolbar   = nil,
-        SearchRow = nil,
-        SearchBox = nil,
-        CaseButton = nil,
-        CollapseButton = nil,
-        ViewButton = nil,
-        SortButton = nil,
-        SpeedButton = nil,
-        RankButton = nil,
-        DistanceButton = nil,
-        Rows      = {},
-        Visible   = true,
-        Collapsed = false,
-        Grid      = false,
-        Sort      = "Name",
-        Ascending = true,
-        CaseSensitive = false,
-        SearchText = "",
-        ShowSpeed = true,
-        ShowRank = true,
-        ShowDistance = true,
-        RowMode = nil,
+        Gui = nil, Frame = nil, Body = nil, Layout = nil, Toolbar = nil,
+        SearchRow = nil, SearchBox = nil, CollapseButton = nil, ViewButton = nil,
+        SortButton = nil, CaseButton = nil, FilterButtons = {},
+        Rows = {}, Grid = false, Collapsed = false, CaseSensitive = false,
+        SearchText = "", FilterIndex = 1, SortIndex = 1, Ascending = true,
+        RowMode = nil, Columns = columns, RowActions = rowActions,
     }
 
     local function Label(parent, name, text, size, color, position, size2, zIndex)
-        local label = Element {
-            ClassName              = "TextLabel",
-            Parent                 = parent,
-            Name                   = name,
-            BackgroundTransparency = 1,
-            BorderSizePixel        = 0,
-            Font                   = Enum.Font.Gotham,
-            TextSize               = size,
-            TextColor3             = color or Theme.Text,
-            TextXAlignment         = Enum.TextXAlignment.Left,
-            TextYAlignment         = Enum.TextYAlignment.Center,
-            Text                   = text or "",
-            Position               = position,
-            Size                   = size2,
-            ZIndex                 = zIndex or 12,
+        return Element {
+            ClassName = "TextLabel", Parent = parent, Name = name, Text = text,
+            BackgroundTransparency = 1, BorderSizePixel = 0, Font = Enum.Font.Gotham,
+            TextSize = size, TextColor3 = color, TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd,
+            Position = position, Size = size2, ZIndex = zIndex or 12,
         }
-        return label
     end
 
     local function Button(parent, name, text, position, size, callback)
         local button = Element {
-            ClassName              = "TextButton",
-            Parent                 = parent,
-            Name                   = name,
-            BackgroundColor3       = Theme.Row,
-            BackgroundTransparency = Theme.RowAlpha,
-            BorderSizePixel        = 0,
-            AutoButtonColor        = false,
-            Font                   = Enum.Font.GothamBold,
-            TextSize               = Theme.Type.Support,
-            TextColor3             = Theme.Text,
-            Text                   = text,
-            Position               = position,
-            Size                   = size,
-            ZIndex                 = 13,
+            ClassName = "TextButton", Parent = parent, Name = name,
+            BackgroundColor3 = Theme.Row, BackgroundTransparency = Theme.RowAlpha,
+            BorderSizePixel = 0, AutoButtonColor = false, Font = Enum.Font.GothamBold,
+            TextSize = Theme.Type.Support, TextColor3 = Theme.Text, Text = text,
+            Position = position, Size = size, ZIndex = 13,
         }
         Sticker(button, {
-            Color = "Row",
-            Alpha = Theme.RowAlpha,
-            Corner = "RowRadius",
-            Stroke = "Line",
-            Glass = true,
+            Color = "Row", Alpha = Theme.RowAlpha, Corner = "RowRadius",
+            Stroke = "Line", Glass = true,
         })
-        if callback then
-            button.MouseButton1Click:Connect(callback)
-        end
+        if callback then button.MouseButton1Click:Connect(callback) end
         return button
     end
 
-    local function UpdateLayout()
-        if not list.Frame then
-            return
+    local function CellValue(column, rowData)
+        local value = column.Get and column.Get(rowData) or rowData[column.Key]
+        if column.Format then value = column.Format(value, rowData) end
+        local symbol = column.Symbol
+        if type(symbol) == "function" then symbol = symbol(rowData) end
+        if symbol and symbol ~= "" then
+            value = tostring(symbol) .. " " .. tostring(value or "")
         end
+        return tostring(value == nil and "" or value)
+    end
 
-        list.Frame.Size = UDim2.fromOffset(width, list.Collapsed and 38 or 440)
+    local function CellColor(column, rowData)
+        local color = column.Color
+        if type(color) == "function" then color = color(rowData) end
+        return color or Theme.Text
+    end
+
+    local function ActionLabel(action, rowData)
+        local label = action.Label
+        if type(label) == "function" then label = label(rowData) end
+        return tostring(label or "")
+    end
+
+    local function ActionColor(action, rowData)
+        local color = action.Color
+        if type(color) == "function" then color = color(rowData) end
+        return color
+    end
+
+    local function ActionActive(action, rowData)
+        local active = action.Active
+        if type(active) == "function" then return active(rowData) end
+        return active == true
+    end
+
+    local function UpdateLayout()
+        if not list.Frame then return end
+
+        list.Frame.Size = UDim2.fromOffset(width, list.Collapsed and 62 or 440)
         list.SearchRow.Visible = not list.Collapsed
         list.Body.Visible = not list.Collapsed
         list.Body.Size = UDim2.new(1, -8, 0, list.Collapsed and 0 or 370)
         list.CollapseButton.Text = list.Collapsed and "›" or "⌄"
         list.ViewButton.Text = list.Grid and "GRID" or "LIST"
-        list.SortButton.Text = string.format("SORT %s %s", string.upper(list.Sort), list.Ascending and "↑" or "↓")
-        local function StyleToggle(button, active)
+
+        local sorter = sorters[list.SortIndex]
+        list.SortButton.Text = sorter
+            and string.format("SORT %s %s", string.upper(sorter.Label or ""), list.Ascending and "↑" or "↓")
+            or "SORT"
+        list.CaseButton.Text = list.CaseSensitive and "CASE: ON" or "CASE: OFF"
+        list.CaseButton.TextColor3 = list.CaseSensitive and (settings.ActiveColor or Theme.Text) or muted
+
+        for index, button in ipairs(list.FilterButtons) do
+            local active = index == list.FilterIndex
             button.BackgroundColor3 = active and (settings.ActiveColor or Theme.Text) or Theme.Row
             button.BackgroundTransparency = active and 0.42 or Theme.RowAlpha
             button.TextColor3 = active and (settings.ActiveTextColor or Theme.Text) or Theme.Text
         end
-        StyleToggle(list.SpeedButton, list.ShowSpeed)
-        StyleToggle(list.RankButton, list.ShowRank)
-        StyleToggle(list.DistanceButton, list.ShowDistance)
-        list.CaseButton.Text = list.CaseSensitive and "CASE: ON" or "CASE: OFF"
-        list.CaseButton.TextColor3 = list.CaseSensitive and (settings.ActiveColor or Theme.Text) or muted
 
         local mode = list.Grid and "Grid" or "List"
         if list.RowMode ~= mode then
             list.RowMode = mode
-
-            for _, row in pairs(list.Rows) do
-                row.Frame:Destroy()
-            end
+            for _, row in pairs(list.Rows) do row.Frame:Destroy() end
             list.Rows = {}
-
-            if list.Layout then
-                list.Layout:Destroy()
-            end
+            if list.Layout then list.Layout:Destroy() end
 
             if list.Grid then
                 list.Layout = Element {
-                    ClassName     = "UIGridLayout",
-                    Parent        = list.Body,
-                    CellSize      = UDim2.fromOffset(gridWidth, gridHeight),
-                    CellPadding   = UDim2.fromOffset(4, 4),
-                    SortOrder     = Enum.SortOrder.LayoutOrder,
+                    ClassName = "UIGridLayout", Parent = list.Body,
+                    CellSize = UDim2.fromOffset(gridWidth, gridHeight),
+                    CellPadding = UDim2.fromOffset(4, 4),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
                 }
             else
                 list.Layout = Element {
-                    ClassName = "UIListLayout",
-                    Parent    = list.Body,
-                    Padding   = UDim.new(0, 2),
-                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    ClassName = "UIListLayout", Parent = list.Body,
+                    Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder,
                 }
             end
         end
@@ -3278,141 +3264,81 @@ function MonoUI:CreatePlayerList(settings)
 
     local function CreateRow(rowData)
         local frame = Element {
-            ClassName              = "TextButton",
-            Parent                 = list.Body,
-            Name                   = "Player_" .. tostring(rowData.Id or rowData.Name or "Row"),
-            BackgroundColor3       = Theme.Row,
-            BackgroundTransparency = Theme.RowAlpha,
-            BorderSizePixel        = 0,
-            AutoButtonColor        = false,
-            Text                   = "",
-            ZIndex                 = 11,
+            ClassName = "TextButton", Parent = list.Body,
+            Name = "Player_" .. tostring(rowData.Id or rowData.Name or "Row"),
+            BackgroundColor3 = Theme.Surface, BackgroundTransparency = 0.52,
+            BorderSizePixel = 0, AutoButtonColor = false, Text = "", ZIndex = 11,
         }
         Sticker(frame, {
-            Color = "Surface",
-            Alpha = 0.52,
-            Corner = "RowRadius",
-            Stroke = "Line",
-            Glass = true,
+            Color = "Surface", Alpha = 0.52, Corner = "RowRadius",
+            Stroke = "Line", Glass = true,
         })
 
-        local avatar = Element {
-            ClassName              = "ImageLabel",
-            Parent                 = frame,
-            Name                   = "Avatar",
-            BackgroundTransparency = 1,
-            BorderSizePixel        = 0,
-            Image                  = rowData.UserId
-                and string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", rowData.UserId)
-                or "",
-            Visible                = false,
-            ZIndex                 = 12,
-        }
-        Element { ClassName = "UICorner", Parent = avatar, CornerRadius = UDim.new(0, 4) }
+        local cells = {}
+        for index, column in ipairs(columns) do
+            cells[index] = Label(
+                frame, "Cell_" .. (column.Key or index), "", column.Size or 10,
+                muted, UDim2.fromOffset(0, 0), UDim2.fromOffset(column.Width or 80, rowHeight), 12
+            )
+            if column.Bold then cells[index].Font = Enum.Font.GothamBold end
+        end
 
-        local name = Label(frame, "Name", rowData.Name or "", 11, Theme.Text, UDim2.fromOffset(8, 0), UDim2.fromOffset(150, rowHeight), 12)
-        name.Font = Enum.Font.GothamBold
-        local rank = Label(frame, "Rank", rowData.Rank or settings.RankFallback or "", 10, muted, UDim2.fromOffset(165, 0), UDim2.fromOffset(70, rowHeight), 12)
-        local distance = Label(frame, "Distance", "", 10, muted, UDim2.fromOffset(240, 0), UDim2.fromOffset(75, rowHeight), 12)
-        local speed = Label(frame, "Speed", "", 10, muted, UDim2.fromOffset(320, 0), UDim2.fromOffset(70, rowHeight), 12)
-        local gps = Label(frame, "GPS", rowData.GpsLabel or settings.GpsLabel or "", 9, muted, UDim2.fromOffset(396, 0), UDim2.fromOffset(44, rowHeight), 12)
-        gps.Font = Enum.Font.GothamBold
-        gps.TextXAlignment = Enum.TextXAlignment.Center
-        local state = Label(frame, "State", rowData.State or settings.StateFallback or "", 9, muted, UDim2.fromOffset(444, 0), UDim2.fromOffset(150, rowHeight), 12)
-        state.Font = Enum.Font.GothamBold
-        state.TextXAlignment = Enum.TextXAlignment.Center
-        local friend = Button(frame, "Friend", settings.FriendLabel or "", UDim2.new(1, -46, 0, 5), UDim2.fromOffset(18, 20), function()
-            if settings.OnRelation then
-                settings.OnRelation(rowData.Id, "Friend")
-            end
-            list:Refresh()
-        end)
-        local enemy = Button(frame, "Enemy", settings.EnemyLabel or "", UDim2.new(1, -24, 0, 5), UDim2.fromOffset(18, 20), function()
-            if settings.OnRelation then
-                settings.OnRelation(rowData.Id, "Enemy")
-            end
-            list:Refresh()
-        end)
+        local actions = {}
+        for index, action in ipairs(rowActions) do
+            local button = Button(
+                frame, "Action_" .. (action.Id or index), ActionLabel(action, rowData),
+                UDim2.new(1, -22 - (#rowActions - index) * 22, 0, 5),
+                UDim2.fromOffset(18, 20), function()
+                    if action.OnClick then action.OnClick(rowData) end
+                end
+            )
+            actions[index] = button
+        end
 
         frame.MouseButton1Click:Connect(function()
-            if settings.OnSelect then
-                settings.OnSelect(rowData.Id)
-            end
+            if settings.OnSelect then settings.OnSelect(rowData.Id) end
         end)
 
-        local data = {
-            Frame = frame, Avatar = avatar, Name = name, Rank = rank,
-            Distance = distance, Speed = speed, GPS = gps, State = state,
-            Friend = friend, Enemy = enemy,
-        }
-        list.Rows[rowData.Id] = data
-        return data
+        list.Rows[rowData.Id] = { Frame = frame, Cells = cells, Actions = actions }
+        return list.Rows[rowData.Id]
     end
 
     local function ApplyRowLayout(row)
-        if list.Grid then
-            row.Avatar.Visible = true
-            row.Avatar.Position = UDim2.fromOffset(6, 13)
-            row.Avatar.Size = UDim2.fromOffset(36, 36)
-            row.Name.Position = UDim2.fromOffset(50, 2)
-            row.Name.Size = UDim2.fromOffset(100, 16)
-            row.Rank.Position = UDim2.fromOffset(50, 20)
-            row.Rank.Size = UDim2.fromOffset(44, 14)
-            row.Distance.Position = UDim2.fromOffset(96, 20)
-            row.Distance.Size = UDim2.fromOffset(44, 14)
-            row.Speed.Position = UDim2.fromOffset(142, 20)
-            row.Speed.Size = UDim2.fromOffset(40, 14)
-            row.GPS.Position = UDim2.fromOffset(6, 1)
-            row.GPS.Size = UDim2.fromOffset(38, 12)
-            row.State.Position = UDim2.fromOffset(50, 42)
-            row.State.Size = UDim2.fromOffset(100, 12)
-            row.Friend.Position = UDim2.new(1, -46, 0, 6)
-            row.Enemy.Position = UDim2.new(1, -24, 0, 6)
-            row.Frame.Size = UDim2.fromOffset(gridWidth, gridHeight)
-        else
-            row.Avatar.Visible = false
-            row.Name.Position = UDim2.fromOffset(8, 0)
-            row.Name.Size = UDim2.fromOffset(150, rowHeight)
-            row.Rank.Position = UDim2.fromOffset(165, 0)
-            row.Rank.Size = UDim2.fromOffset(70, rowHeight)
-            row.Distance.Position = UDim2.fromOffset(240, 0)
-            row.Distance.Size = UDim2.fromOffset(75, rowHeight)
-            row.Speed.Position = UDim2.fromOffset(320, 0)
-            row.Speed.Size = UDim2.fromOffset(70, rowHeight)
-            row.GPS.Position = UDim2.fromOffset(396, 0)
-            row.GPS.Size = UDim2.fromOffset(44, rowHeight)
-            row.State.Position = UDim2.fromOffset(444, 0)
-            row.State.Size = UDim2.fromOffset(150, rowHeight)
-            row.Friend.Position = UDim2.new(1, -46, 0, 5)
-            row.Enemy.Position = UDim2.new(1, -24, 0, 5)
-            row.Frame.Size = UDim2.new(1, -4, 0, rowHeight)
+        local grid = list.Grid
+        local cellWidth = grid and math.max(24, (gridWidth - 12) / math.max(#columns, 1)) or nil
+        local x = grid and 6 or 8
+
+        for index, column in ipairs(columns) do
+            local cell = row.Cells[index]
+            local columnWidth = grid and cellWidth or (column.Width or 80)
+            cell.Position = UDim2.fromOffset(x, grid and 3 or 0)
+            cell.Size = UDim2.fromOffset(columnWidth, grid and (gridHeight - 8) or rowHeight)
+            cell.TextSize = grid and math.max(8, (column.Size or 10) - 1) or (column.Size or 10)
+            cell.TextXAlignment = column.Align or Enum.TextXAlignment.Left
+            x += columnWidth
         end
+
+        for index, button in ipairs(row.Actions) do
+            button.Position = UDim2.new(1, -22 - (#row.Actions - index) * 22, 0, grid and 6 or 5)
+        end
+
+        row.Frame.Size = grid and UDim2.fromOffset(gridWidth, gridHeight) or UDim2.new(1, -4, 0, rowHeight)
     end
 
-    local function SortKey(row)
-        if list.Sort == "Distance" then
-            return type(row.Distance) == "number" and row.Distance == row.Distance and row.Distance or math.huge
-        end
-        if list.Sort == "Rank" then
-            local ranks = settings.RankOrder or {}
-            return ranks[row.Rank] or math.huge
-        end
-        return string.lower(row.Name or "")
+    local function SortValue(rowData)
+        local sorter = sorters[list.SortIndex]
+        if sorter and sorter.Value then return sorter.Value(rowData) end
+        if columns[1] and columns[1].Get then return columns[1].Get(rowData) end
+        return rowData.Name or rowData.Id
     end
 
     function list:Refresh()
         UpdateLayout()
-        if not list.Frame then
-            return
-        end
+        if not list.Frame then return end
 
         local rows = settings.GetRows and settings.GetRows() or {}
         local ids = {}
-
-        for _, row in ipairs(rows) do
-            ids[row.Id] = true
-        end
-
+        for _, rowData in ipairs(rows) do ids[rowData.Id] = true end
         for id, row in pairs(list.Rows) do
             if not ids[id] then
                 row.Frame:Destroy()
@@ -3422,104 +3348,80 @@ function MonoUI:CreatePlayerList(settings)
 
         local query = list.SearchText or ""
         local lowerQuery = string.lower(query)
+        local filter = filters[list.FilterIndex]
         local filtered = {}
 
-        for _, row in ipairs(rows) do
-            local haystack = tostring(row.Name or "") .. " " .. tostring(row.DisplayName or "")
+        for _, rowData in ipairs(rows) do
+            local searchable = settings.SearchText
+                and settings.SearchText(rowData)
+                or tostring(rowData.Name or rowData.DisplayName or rowData.Id or "")
             local matched = query == ""
-                or (list.CaseSensitive and string.find(haystack, query, 1, true) ~= nil)
-                or (not list.CaseSensitive and string.find(string.lower(haystack), lowerQuery, 1, true) ~= nil)
+                or (list.CaseSensitive and string.find(searchable, query, 1, true) ~= nil)
+                or (not list.CaseSensitive and string.find(string.lower(searchable), lowerQuery, 1, true) ~= nil)
 
-            if matched then
-                filtered[#filtered + 1] = row
+            if matched and (not filter or not filter.Test or filter.Test(rowData)) then
+                filtered[#filtered + 1] = rowData
             end
         end
 
         table.sort(filtered, function(left, right)
-            local leftKey, rightKey = SortKey(left), SortKey(right)
-
+            local leftKey, rightKey = SortValue(left), SortValue(right)
             if type(leftKey) ~= type(rightKey) then
                 return tostring(leftKey) < tostring(rightKey)
             end
-
             if leftKey == rightKey then
-                return tostring(left.Name or "") < tostring(right.Name or "")
+                return tostring(left.Id or "") < tostring(right.Id or "")
             end
-
-            if list.Ascending then
-                return leftKey < rightKey
-            end
-
+            if list.Ascending then return leftKey < rightKey end
             return leftKey > rightKey
         end)
 
-        for _, row in pairs(list.Rows) do
-            row.Frame.Visible = false
-        end
+        for _, row in pairs(list.Rows) do row.Frame.Visible = false end
 
         for index, rowData in ipairs(filtered) do
             local row = list.Rows[rowData.Id] or CreateRow(rowData)
             ApplyRowLayout(row)
-            local relation = rowData.Relation
             row.Frame.Visible = true
             row.Frame.LayoutOrder = index
-            row.Name.Text = tostring(rowData.Name or "")
-            row.Name.TextColor3 = rowData.NameColor or relationColors[relation] or Theme.Text
-            row.Rank.Text = tostring(rowData.Rank or settings.RankFallback or "")
-            row.Rank.TextColor3 = rowData.RankColor or muted
-            row.Rank.Visible = list.ShowRank
-            row.Distance.Text = type(rowData.Distance) == "number"
-                and string.format("%.0f%s", rowData.Distance, rowData.GpsLabel and (" " .. rowData.GpsLabel) or "")
-                or "N/A"
-            row.Distance.Visible = list.ShowDistance
-            row.Speed.Text = type(rowData.Speed) == "number" and string.format("%.0f mph", rowData.Speed) or "N/A"
-            row.Speed.TextColor3 = rowData.SpeedColor or muted
-            row.Speed.Visible = list.ShowSpeed
-            row.GPS.Text = rowData.GpsLabel or settings.GpsLabel or ""
-            row.GPS.TextColor3 = rowData.GpsColor or muted
-            row.State.Text = tostring(rowData.State or settings.StateFallback or "")
-            row.State.TextColor3 = rowData.StateColor or Theme.Text
-            local function StyleRelation(button, active, color)
-                button.BackgroundColor3 = active and (color or Theme.Row) or Theme.Row
+
+            for columnIndex, column in ipairs(columns) do
+                local cell = row.Cells[columnIndex]
+                cell.Text = CellValue(column, rowData)
+                cell.TextColor3 = CellColor(column, rowData)
+                cell.Visible = column.Visible ~= false
+            end
+
+            for actionIndex, action in ipairs(rowActions) do
+                local button = row.Actions[actionIndex]
+                local active = ActionActive(action, rowData)
+                button.Text = ActionLabel(action, rowData)
+                button.BackgroundColor3 = active and (ActionColor(action, rowData) or settings.ActiveColor or Theme.Text) or Theme.Row
                 button.BackgroundTransparency = active and 0.38 or Theme.RowAlpha
                 button.TextColor3 = Theme.Text
             end
-            StyleRelation(row.Friend, relation == "Friend", rowData.FriendColor or relationColors.Friend)
-            StyleRelation(row.Enemy, relation == "Enemy", rowData.EnemyColor or relationColors.Enemy)
         end
     end
 
     local function Build()
         local gui = Element {
-            ClassName      = "ScreenGui",
-            Parent         = UiContainer(),
-            Name           = settings.GuiName or "MonoUIPlayerList",
-            ResetOnSpawn   = false,
-            IgnoreGuiInset = true,
+            ClassName = "ScreenGui", Parent = UiContainer(),
+            Name = settings.GuiName or "MonoUIPlayerList",
+            ResetOnSpawn = false, IgnoreGuiInset = true,
             ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-            DisplayOrder   = settings.DisplayOrder or 2147483001,
+            DisplayOrder = settings.DisplayOrder or 2147483001,
         }
         list.Gui = gui
 
         local frame = Element {
-            ClassName              = "Frame",
-            Parent                 = gui,
-            Name                   = "PlayerListFrame",
-            BackgroundColor3       = Theme.Surface,
-            BackgroundTransparency = Theme.WindowTransparency,
-            BorderSizePixel        = 0,
-            AnchorPoint            = Vector2.new(1, 0),
-            Position               = settings.Position or UDim2.new(1, -20, 0, 20),
-            Size                   = UDim2.fromOffset(width, 440),
-            ZIndex                 = 5,
+            ClassName = "Frame", Parent = gui, Name = "PlayerListFrame",
+            BackgroundColor3 = Theme.Surface, BackgroundTransparency = Theme.WindowTransparency,
+            BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0),
+            Position = settings.Position or UDim2.new(1, -20, 0, 20),
+            Size = UDim2.fromOffset(width, 440), ZIndex = 5,
         }
         Sticker(frame, {
-            Color = "Surface",
-            Alpha = Theme.WindowTransparency,
-            Corner = "Radius",
-            Stroke = "Outline",
-            Rim = true,
-            Glass = true,
+            Color = "Surface", Alpha = Theme.WindowTransparency, Corner = "Radius",
+            Stroke = "Outline", Rim = true, Glass = true,
         })
         list.Frame = frame
 
@@ -3532,55 +3434,58 @@ function MonoUI:CreatePlayerList(settings)
             list.Collapsed = not list.Collapsed
             UpdateLayout()
         end)
-        Label(toolbar, "Title", settings.Title or "PLAYERS", 12, Theme.Text, UDim2.fromOffset(32, 3), UDim2.fromOffset(72, 24), 7).Font = Enum.Font.GothamBold
+        Label(toolbar, "Title", settings.Title or "PLAYERS", 12, Theme.Text,
+            UDim2.fromOffset(32, 3), UDim2.fromOffset(72, 24), 7).Font = Enum.Font.GothamBold
+
         list.ViewButton = Button(toolbar, "View", "LIST", UDim2.fromOffset(106, 3), UDim2.fromOffset(54, 24), function()
             list.Grid = not list.Grid
             UpdateLayout()
             list:Refresh()
         end)
-        list.SortButton = Button(toolbar, "Sort", "SORT NAME ↑", UDim2.fromOffset(164, 3), UDim2.fromOffset(118, 24), function()
-            if list.Sort == "Name" then list.Sort = "Distance"
-            elseif list.Sort == "Distance" then list.Sort = "Rank"
-            else list.Sort = "Name" end
+
+        list.SortButton = Button(toolbar, "Sort", "SORT", UDim2.fromOffset(164, 3), UDim2.fromOffset(118, 24), function()
+            if #sorters > 0 then
+                list.SortIndex = list.SortIndex % #sorters + 1
+            end
             list.Ascending = true
             UpdateLayout()
             list:Refresh()
         end)
-        list.SpeedButton = Button(toolbar, "Speed", "SPD", UDim2.fromOffset(286, 3), UDim2.fromOffset(50, 24), function()
-            list.ShowSpeed = not list.ShowSpeed
-            UpdateLayout()
-            list:Refresh()
-        end)
-        list.RankButton = Button(toolbar, "Rank", "RANK", UDim2.fromOffset(340, 3), UDim2.fromOffset(50, 24), function()
-            list.ShowRank = not list.ShowRank
-            UpdateLayout()
-            list:Refresh()
-        end)
-        list.DistanceButton = Button(toolbar, "Distance", "DIST", UDim2.fromOffset(394, 3), UDim2.fromOffset(52, 24), function()
-            list.ShowDistance = not list.ShowDistance
-            UpdateLayout()
-            list:Refresh()
-        end)
 
-        local searchRow = Element { ClassName = "Frame", Parent = frame, Name = "SearchRow", BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 32), Size = UDim2.new(1, -8, 0, 26), ZIndex = 6 }
+        local filterX = 288
+        for index, filter in ipairs(filters) do
+            list.FilterButtons[index] = Button(
+                toolbar, "Filter_" .. index, filter.Label or ("F" .. index),
+                UDim2.fromOffset(filterX, 3), UDim2.fromOffset(54, 24), function()
+                    list.FilterIndex = index
+                    UpdateLayout()
+                    list:Refresh()
+                end
+            )
+            filterX += 58
+        end
+
+        local searchRow = Element {
+            ClassName = "Frame", Parent = frame, Name = "SearchRow",
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 32),
+            Size = UDim2.new(1, -8, 0, 26), ZIndex = 6,
+        }
         list.SearchRow = searchRow
+
         local search = Element {
             ClassName = "TextBox", Parent = searchRow, Name = "Search",
             BackgroundColor3 = Theme.Well, BackgroundTransparency = Theme.WellAlpha, BorderSizePixel = 0,
             Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Theme.Text,
-            PlaceholderText = "Search players...", PlaceholderColor3 = muted,
+            PlaceholderText = settings.SearchPlaceholder or "Search...", PlaceholderColor3 = muted,
             Text = "", ClearTextOnFocus = false, Size = UDim2.new(1, -92, 0, 26), ZIndex = 7,
         }
-        Sticker(search, {
-            Color = "Well",
-            Alpha = Theme.WellAlpha,
-            Corner = "RowRadius",
-            Stroke = "Line",
-        })
+        Sticker(search, { Color = "Well", Alpha = Theme.WellAlpha, Corner = "RowRadius", Stroke = "Line" })
+        list.SearchBox = search
         search:GetPropertyChangedSignal("Text"):Connect(function()
             list.SearchText = search.Text
             list:Refresh()
         end)
+
         list.CaseButton = Button(searchRow, "Case", "CASE: OFF", UDim2.new(1, -88, 0, 0), UDim2.fromOffset(88, 26), function()
             list.CaseSensitive = not list.CaseSensitive
             UpdateLayout()
@@ -3589,44 +3494,37 @@ function MonoUI:CreatePlayerList(settings)
 
         local body = Element {
             ClassName = "ScrollingFrame", Parent = frame, Name = "Players",
-            BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(4, 62),
-            Size = UDim2.new(1, -8, 0, 370), ScrollBarThickness = 4,
-            CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y, ZIndex = 6,
+            BackgroundTransparency = 1, BorderSizePixel = 0,
+            Position = UDim2.fromOffset(4, 62), Size = UDim2.new(1, -8, 0, 370),
+            ScrollBarThickness = 4, CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y, ZIndex = 6,
         }
         list.Body = body
         UpdateLayout()
     end
 
+    Build()
+    list:Refresh()
+
     function list:SetVisible(visible)
-        list.Visible = visible and true or false
-        if list.Frame then
-            list.Frame.Visible = list.Visible
-        end
-        return list.Visible
+        if list.Gui then list.Gui.Enabled = visible end
     end
 
     function list:IsVisible()
-        return list.Visible
+        return list.Gui ~= nil and list.Gui.Enabled
     end
 
     function list:Destroy()
-        if list.Gui then
-            list.Gui:Destroy()
-            list.Gui = nil
-        end
+        if list.Gui then list.Gui:Destroy() end
+        list.Gui = nil
         list.Frame = nil
         list.Body = nil
-        table.clear(list.Rows)
+        list.Rows = {}
     end
 
-    Build()
-    list:Refresh()
     return list
 end
 
--- A centered, draggable profile card with two preview viewports, a text panel, per-section action
--- buttons, friend/enemy state and a coordinate prompt. The caller supplies the profile through
--- GetProfile(Id); preview builders receive a blank ViewportFrame and may attach their own camera.
 function MonoUI:CreatePlayerInfo(settings)
     settings = settings or {}
     local width      = settings.Width or 660
