@@ -1,4 +1,4 @@
--- Latest update: 10/25/2026 4:53 PM
+-- Latest update: 10/25/2026 5:07 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -3522,7 +3522,7 @@ function MonoUI:CreatePlayerList(settings)
             Glass = true,
         })
         list.Frame = frame
-        MonoUI:EnableLiquidBlur(frame, { Refresh = 0.25 })
+        MonoUI:EnableLiquidBlur(frame, { Refresh = 0.35 })
 
         local toolbar = Element {
             ClassName = "Frame", Parent = frame, Name = "Toolbar",
@@ -3819,7 +3819,7 @@ function MonoUI:CreatePlayerInfo(settings)
             Glass = true,
         })
         info.Frame = frame
-        MonoUI:EnableLiquidBlur(frame, { Refresh = 0.25 })
+        MonoUI:EnableLiquidBlur(frame, { Refresh = 0.35 })
 
         local titleBar = Element {
             ClassName = "TextButton", Parent = frame, Name = "TitleBar",
@@ -4219,8 +4219,8 @@ function MonoUI:EnableLiquidBlur(frame, settings)
     local running = true
 
     local function Resize(size)
-        local width = math.max(1, math.min(48, math.floor(size.X / 12 + 0.5)))
-        local height = math.max(1, math.min(48, math.floor(size.Y / 12 + 0.5)))
+        local width = math.max(1, math.min(128, math.floor(size.X / 6 + 0.5)))
+        local height = math.max(1, math.min(128, math.floor(size.Y / 6 + 0.5)))
         if width == resolution and height == resolution then
             return width, height
         end
@@ -4328,6 +4328,6 @@ function MonoUI:HideSurface(frame)
     return frame
 end
 
-MonoUI.GlassVersion = "2026-10-25-glass"
+MonoUI.GlassVersion = "2026-10-25-glass-2"
 
 return MonoUI
