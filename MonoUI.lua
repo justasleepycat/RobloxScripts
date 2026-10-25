@@ -3136,6 +3136,7 @@ end
 function MonoUI:CreatePlayerList(settings)
     settings = settings or {}
     local width      = settings.Width or 680
+    local height     = settings.Height or 440
     local rowHeight  = settings.RowHeight or 30
     local gridWidth  = settings.GridCellWidth or 206
     local gridHeight = settings.GridCellHeight or 62
@@ -3218,10 +3219,10 @@ function MonoUI:CreatePlayerList(settings)
     local function UpdateLayout()
         if not list.Frame then return end
 
-        list.Frame.Size = UDim2.fromOffset(width, list.Collapsed and 62 or 440)
+        list.Frame.Size = UDim2.fromOffset(width, list.Collapsed and 30 or height)
         list.SearchRow.Visible = not list.Collapsed
         list.Body.Visible = not list.Collapsed
-        list.Body.Size = UDim2.new(1, -8, 0, list.Collapsed and 0 or 370)
+        list.Body.Size = UDim2.new(1, -8, 0, list.Collapsed and 0 or (height - 70))
         list.CollapseButton.Text = list.Collapsed and "›" or "⌄"
         list.ViewButton.Text = list.Grid and "GRID" or "LIST"
 
@@ -3276,11 +3277,26 @@ function MonoUI:CreatePlayerList(settings)
 
         local cells = {}
         for index, column in ipairs(columns) do
-            cells[index] = Label(
-                frame, "Cell_" .. (column.Key or index), "", column.Size or 10,
-                muted, UDim2.fromOffset(0, 0), UDim2.fromOffset(column.Width or 80, rowHeight), 12
-            )
-            if column.Bold then cells[index].Font = Enum.Font.GothamBold end
+            if column.Kind == "Avatar" then
+                local avatar = Element {
+                    ClassName = "ImageLabel", Parent = frame, Name = "Cell_" .. (column.Key or index),
+                    BackgroundTransparency = 1, BorderSizePixel = 0,
+                    Image = rowData.UserId
+                        and string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", rowData.UserId)
+                        or "",
+                    Position = UDim2.fromOffset(0, 0),
+                    Size = UDim2.fromOffset(column.Width or 30, rowHeight),
+                    ZIndex = 12,
+                }
+                Element { ClassName = "UICorner", Parent = avatar, CornerRadius = UDim.new(0, 4) }
+                cells[index] = avatar
+            else
+                cells[index] = Label(
+                    frame, "Cell_" .. (column.Key or index), "", column.Size or 10,
+                    muted, UDim2.fromOffset(0, 0), UDim2.fromOffset(column.Width or 80, rowHeight), 12
+                )
+                if column.Bold then cells[index].Font = Enum.Font.GothamBold end
+            end
         end
 
         local actions = {}
@@ -3313,8 +3329,10 @@ function MonoUI:CreatePlayerList(settings)
             local columnWidth = grid and cellWidth or (column.Width or 80)
             cell.Position = UDim2.fromOffset(x, grid and 3 or 0)
             cell.Size = UDim2.fromOffset(columnWidth, grid and (gridHeight - 8) or rowHeight)
-            cell.TextSize = grid and math.max(8, (column.Size or 10) - 1) or (column.Size or 10)
-            cell.TextXAlignment = column.Align or Enum.TextXAlignment.Left
+            if cell:IsA("TextLabel") or cell:IsA("TextButton") then
+                cell.TextSize = grid and math.max(8, (column.Size or 10) - 1) or (column.Size or 10)
+                cell.TextXAlignment = column.Align or Enum.TextXAlignment.Left
+            end
             x += columnWidth
         end
 
@@ -3386,8 +3404,14 @@ function MonoUI:CreatePlayerList(settings)
 
             for columnIndex, column in ipairs(columns) do
                 local cell = row.Cells[columnIndex]
-                cell.Text = CellValue(column, rowData)
-                cell.TextColor3 = CellColor(column, rowData)
+                if column.Kind == "Avatar" then
+                    cell.Image = rowData.UserId
+                        and string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", rowData.UserId)
+                        or ""
+                else
+                    cell.Text = CellValue(column, rowData)
+                    cell.TextColor3 = CellColor(column, rowData)
+                end
                 cell.Visible = column.Visible ~= false
             end
 
@@ -3548,6 +3572,7 @@ function MonoUI:CreatePlayerInfo(settings)
         TeleportDialog = nil,
         TeleportInput = nil,
         TeleportError = nil,
+        TeleportPicker = nil,
         DragConnection = nil,
         Dragging = false,
         DragOffset = Vector2.zero,
@@ -3758,7 +3783,7 @@ function MonoUI:CreatePlayerInfo(settings)
         local dialog = Element {
             ClassName = "Frame", Parent = frame, Name = "TeleportDialog",
             BackgroundColor3 = Theme.Surface, BackgroundTransparency = Theme.WindowTransparency, BorderSizePixel = 0,
-            Position = UDim2.fromOffset(180, 140), Size = UDim2.fromOffset(300, 126),
+            Position = UDim2.fromOffset(180, 140), Size = UDim2.fromOffset(300, 140),
             Visible = false, ZIndex = 50,
         }
         Sticker(dialog, {
@@ -3799,6 +3824,10 @@ function MonoUI:CreatePlayerInfo(settings)
         end)
         Button(dialog, "Cancel", "CANCEL", UDim2.fromOffset(158, 78), UDim2.fromOffset(130, 24), function()
             dialog.Visible = false
+            info:CloseTeleportPicker()
+        end)
+        Button(dialog, "SelectPlayer", settings.TeleportPickerLabel or "SELECT PLAYER", UDim2.fromOffset(12, 108), UDim2.fromOffset(276, 22), function()
+            info:ToggleTeleportPicker()
         end)
 
         titleBar.InputBegan:Connect(function(inputObject)
@@ -3816,6 +3845,78 @@ function MonoUI:CreatePlayerInfo(settings)
         end)
     end
 
+    function info:CloseTeleportPicker()
+        if self.TeleportPicker then
+            self.TeleportPicker:Destroy()
+            self.TeleportPicker = nil
+        end
+    end
+
+    function info:ToggleTeleportPicker()
+        if self.TeleportPicker then
+            self:CloseTeleportPicker()
+            return
+        end
+        if not settings.GetTeleportRows then
+            return
+        end
+
+        local dialog = self.TeleportDialog
+        local position = dialog and dialog.AbsolutePosition or Vector2.zero
+        local picker
+
+        picker = MonoUI:CreatePlayerList({
+            Width = 332,
+            Height = 300,
+            GuiName = "MonoUITeleportPicker",
+            DisplayOrder = 2147483004,
+            Position = UDim2.fromOffset(
+                math.max(8, math.floor(position.X - 340)),
+                math.max(8, math.floor(position.Y))
+            ),
+            Title = settings.TeleportPickerTitle or "TELEPORT TO",
+            SearchPlaceholder = "Search players...",
+            GetRows = settings.GetTeleportRows,
+            Columns = {
+                { Key = "Avatar", Kind = "Avatar", Width = 34, Size = 10 },
+                {
+                    Key = "Name", Label = "Name", Width = 150, Size = 10, Bold = true,
+                    Get = function(row) return row.Name end,
+                    Color = function(row) return row.NameColor end,
+                },
+                {
+                    Key = "Distance", Label = "Distance", Width = 80, Size = 9,
+                    Get = function(row)
+                        if type(row.Distance) ~= "number" then return "N/A" end
+                        return string.format("%.0f%s", row.Distance,
+                            row.GpsLabel and row.GpsLabel ~= "" and (" " .. row.GpsLabel) or "")
+                    end,
+                    Color = function() return Theme.Muted end,
+                },
+            },
+            Sorters = settings.GetTeleportSorters or {
+                { Label = "Name", Value = function(row) return string.lower(row.Name or "") end },
+                {
+                    Label = "Distance", Value = function(row)
+                        return type(row.Distance) == "number" and row.Distance or math.huge
+                    end,
+                },
+            },
+            Filters = {},
+            RowActions = {},
+            SearchText = function(row) return row.Name .. " " .. row.DisplayName end,
+            OnSelect = function(id)
+                local profile = settings.GetProfile and settings.GetProfile(id) or nil
+                if profile and profile.TeleportPosition then
+                    self.TeleportInput.Text = tostring(profile.TeleportPosition)
+                end
+                self:CloseTeleportPicker()
+            end,
+        })
+
+        self.TeleportPicker = picker
+    end
+
     function info:SubmitTeleport()
         local x, y, z = string.match(self.TeleportInput.Text, "^%s*([^,%s]+)%s*[,%s]+([^,%s]+)%s*[,%s]+([^,%s]+)")
         local numberX, numberY, numberZ = tonumber(x), tonumber(y), tonumber(z)
@@ -3826,6 +3927,7 @@ function MonoUI:CreatePlayerInfo(settings)
         end
 
         self.TeleportDialog.Visible = false
+        self:CloseTeleportPicker()
 
         if self.Target and settings.OnTeleport then
             settings.OnTeleport(self.Target, numberX, numberY, numberZ)
@@ -3836,6 +3938,8 @@ function MonoUI:CreatePlayerInfo(settings)
         if not self.TeleportDialog then
             return
         end
+
+        self:CloseTeleportPicker()
 
         local profile = self.Target and settings.GetProfile(self.Target) or nil
         if profile and profile.TeleportPosition then
@@ -3926,6 +4030,7 @@ function MonoUI:CreatePlayerInfo(settings)
     end
 
     function info:Close()
+        self:CloseTeleportPicker()
         if self.TeleportDialog then
             self.TeleportDialog.Visible = false
         end
