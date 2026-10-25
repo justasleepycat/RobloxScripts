@@ -1,4 +1,4 @@
--- Latest update: 10/23/2026
+-- Latest update: 10/25/2026 4:37 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -275,7 +275,7 @@ local SheenTransparency = NumberSequence.new {
 
 -- 0.5 -> pill, 12 -> pixels, "RowRadius" -> that palette entry
 local function ResolveRadius(corner)
-    if type(corner) == "string" then return UDim.new(0, Theme[corner] or Theme.RowRadius) end
+    if type(corner) == "string" then return UDim.new(0, Theme[corner] or Theme.WellRadius) end
     if type(corner) ~= "number" then return UDim.new(0, Theme.RowRadius) end
     if corner < 1 then return UDim.new(corner, 0) end
     return UDim.new(0, corner)
@@ -1392,7 +1392,7 @@ local function Button(properties)
         Text            = "",
         LayoutOrder     = properties.Order or 1,
         ZIndex          = properties.ZIndex or 2,
-    }, { Color = properties.Color or "Row", Alpha = properties.Alpha or Theme.RowAlpha, Corner = "RowRadius", Stroke = properties.Stroke or "Line", Glass = true })
+    }, { Color = properties.Color or "Row", Alpha = properties.Alpha or Theme.WellAlpha, Corner = "RowRadius", Stroke = properties.Stroke or "Line", Glass = true })
 
     Texted(button, {
         Text   = string.upper(properties.Caption or properties.Text or "BUTTON"),
@@ -2596,7 +2596,7 @@ function MonoUI:CreateWindow(settings)
                 end
                 other.content.LayoutOrder = 3
                 other.button.BackgroundColor3 = Theme[active and "Text" or "Row"]
-                other.button.BackgroundTransparency = active and Theme.SwitchOnAlpha or Theme.RowAlpha
+                other.button.BackgroundTransparency = active and Theme.SwitchOnAlpha or Theme.WellAlpha
                 other.label.TextColor3 = Theme[active and "Invert" or "Text"]
             end
         end
@@ -2701,6 +2701,1326 @@ function MonoUI:CreateWindow(settings)
 
     MonoUI.Window = window
     return window
+end
+
+--=== overlay components ====================================================
+
+-- A stack of transient status cards. The newest card sits at the bottom and older cards move up;
+-- each card fades in, slides in from the right with a cubic ease, and fades out before removal.
+-- The component is data-light on purpose: Push(message, kind) is all a caller needs.
+function MonoUI:CreateToastQueue(settings)
+    settings = settings or {}
+    local tweenService = game:GetService("TweenService")
+    local width        = settings.Width or 380
+    local height       = settings.Height or 34
+    local lifetime     = settings.Lifetime or 4
+    local maximum      = settings.Max or 8
+    local margin       = settings.Margin or 20
+    local queue = {
+        Gui       = nil,
+        Container = nil,
+        Items     = {},
+    }
+
+    local function Ensure()
+        if queue.Gui and queue.Gui.Parent then
+            return
+        end
+
+        local gui = Element {
+            ClassName      = "ScreenGui",
+            Parent         = UiContainer(),
+            Name           = settings.GuiName or "MonoUIToasts",
+            ResetOnSpawn   = false,
+            IgnoreGuiInset = true,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            DisplayOrder   = settings.DisplayOrder or 2147483002,
+        }
+        queue.Gui = gui
+
+        local container = Element {
+            ClassName              = "Frame",
+            Parent                 = gui,
+            Name                   = "Toasts",
+            BackgroundTransparency = 1,
+            AnchorPoint            = Vector2.new(1, 1),
+            Position               = UDim2.new(1, -margin, 1, -margin),
+            Size                   = UDim2.new(0, width, 0, height * maximum + 4 * maximum),
+            ZIndex                 = 10,
+        }
+        queue.Container = container
+    end
+
+    local function Layout()
+        if not queue.Container then
+            return
+        end
+
+        local baseY = queue.Container.Size.Y.Offset - height
+
+        for index, item in ipairs(queue.Items) do
+            if item.Frame and item.Frame.Parent and not item.Dismissed then
+                tweenService:Create(
+                    item.Frame,
+                    TweenInfo.new(0.35, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out),
+                    { Position = UDim2.fromOffset(0, baseY - (index - 1) * (height + 4)) }
+                ):Play()
+            end
+        end
+    end
+
+    local function Dismiss(item)
+        if not item or item.Dismissed or not item.Frame or not item.Frame.Parent then
+            return
+        end
+
+        item.Dismissed = true
+        local tween = tweenService:Create(
+            item.Frame,
+            TweenInfo.new(0.3, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out),
+            { GroupTransparency = 1 }
+        )
+
+        tween.Completed:Once(function()
+            if item.Frame then
+                item.Frame:Destroy()
+            end
+
+            for index, value in ipairs(queue.Items) do
+                if value == item then
+                    table.remove(queue.Items, index)
+                    break
+                end
+            end
+
+            Layout()
+        end)
+        tween:Play()
+    end
+
+    function queue:Push(message, kind)
+        Ensure()
+
+        if not queue.Container then
+            return
+        end
+
+        local accent = kind == "success" and Color3.fromRGB(140, 255, 180)
+            or kind == "error" and Color3.fromRGB(255, 95, 95)
+            or Theme.Text
+
+        local card = Element {
+            ClassName              = "CanvasGroup",
+            Parent                 = queue.Container,
+            Name                   = "Toast",
+            BackgroundColor3       = Theme.Surface,
+            BackgroundTransparency = 0.04,
+            BorderSizePixel        = 0,
+            Size                   = UDim2.new(0, width, 0, height),
+            Position               = UDim2.fromOffset(width, queue.Container.Size.Y.Offset - height),
+            GroupTransparency      = 1,
+            ZIndex                 = 11,
+        }
+
+        Element {
+            ClassName   = "UICorner",
+            Parent      = card,
+            CornerRadius = UDim.new(0, Theme.RowRadius),
+        }
+        Element {
+            ClassName   = "UIStroke",
+            Parent      = card,
+            Color       = accent,
+            Transparency = 0.35,
+            Thickness   = 1,
+        }
+        Element {
+            ClassName       = "Frame",
+            Parent          = card,
+            BackgroundColor3 = accent,
+            BorderSizePixel  = 0,
+            Position         = UDim2.fromOffset(3, 4),
+            Size             = UDim2.new(0, 3, 1, -8),
+            ZIndex           = 12,
+        }
+        local label = Element {
+            ClassName              = "TextLabel",
+            Parent                 = card,
+            BackgroundTransparency = 1,
+            BorderSizePixel        = 0,
+            Text                   = tostring(message),
+            TextColor3             = Theme.Text,
+            TextSize               = Theme.Type.Body,
+            Font                   = Enum.Font.Gotham,
+            TextXAlignment          = Enum.TextXAlignment.Left,
+            TextYAlignment          = Enum.TextYAlignment.Center,
+            TextWrapped            = true,
+            Position               = UDim2.fromOffset(12, 2),
+            Size                   = UDim2.new(1, -18, 1, -4),
+            ZIndex                 = 12,
+        }
+        Fonted(label, false)
+
+        local item = { Frame = card, Dismissed = false }
+        table.insert(queue.Items, 1, item)
+        Layout()
+
+        tweenService:Create(
+            card,
+            TweenInfo.new(0.28, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out),
+            { GroupTransparency = 0 }
+        ):Play()
+
+        if #queue.Items > maximum then
+            Dismiss(queue.Items[#queue.Items])
+        end
+
+        task.delay(lifetime, function()
+            Dismiss(item)
+        end)
+    end
+
+    function queue:Show(message, kind)
+        queue:Push(message, kind)
+    end
+
+    function queue:Clear()
+        for _, item in ipairs(queue.Items) do
+            if item.Frame then
+                item.Frame:Destroy()
+            end
+        end
+
+        table.clear(queue.Items)
+    end
+
+    function queue:Destroy()
+        queue:Clear()
+
+        if queue.Gui then
+            queue.Gui:Destroy()
+            queue.Gui = nil
+            queue.Container = nil
+        end
+    end
+
+    return queue
+end
+
+-- A compact command menu: title, optional preview area, and a list of actions. Open it with a
+-- position in screen space; entries are ordinary { Label, Callback, Danger } tables.
+function MonoUI:CreateContextMenu(settings)
+    settings = settings or {}
+    local width         = settings.Width or 226
+    local headerHeight  = settings.HeaderHeight or 56
+    local previewHeight = settings.PreviewHeight or 112
+    local previewGap    = settings.PreviewGap or 8
+    local rowHeight     = settings.RowHeight or 27
+    local sidePadding   = settings.SidePadding or 8
+    local bottomPadding = settings.BottomPadding or 10
+    local background    = settings.Background or Theme.Surface
+    local mutedColor    = settings.Muted or Theme.Muted
+    local dangerColor   = settings.Danger or Color3.fromRGB(255, 95, 95)
+
+    local menu = {
+        Gui    = nil,
+        Frame  = nil,
+        Open   = false,
+        Bounds = nil,
+    }
+
+    local function EnsureGui()
+        if menu.Gui and menu.Gui.Parent then
+            return
+        end
+
+        menu.Gui = Element {
+            ClassName      = "ScreenGui",
+            Parent         = UiContainer(),
+            Name           = settings.GuiName or "MonoUIContextMenu",
+            ResetOnSpawn   = false,
+            IgnoreGuiInset = true,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            DisplayOrder   = settings.DisplayOrder or 2147483003,
+        }
+    end
+
+    function menu:Close()
+        if menu.Frame then
+            menu.Frame:Destroy()
+            menu.Frame = nil
+        end
+
+        menu.Open = false
+        menu.Bounds = nil
+
+        if settings.OnClose then
+            pcall(settings.OnClose)
+        end
+    end
+
+    function menu:IsOpen()
+        return menu.Open
+    end
+
+    function menu:OpenAt(options)
+        options = options or {}
+        menu:Close()
+        EnsureGui()
+
+        local entries = options.Entries or {}
+        local hasPreview = options.Preview ~= nil
+        local height = headerHeight
+            + (hasPreview and (previewHeight + previewGap) or 0)
+            + #entries * rowHeight
+            + bottomPadding
+        local screen = Viewport()
+        local position = options.Position or UserInput:GetMouseLocation()
+        local x = math.clamp(math.floor(position.X), 8, math.max(8, screen.X - width - 8))
+        local y = math.clamp(math.floor(position.Y), 8, math.max(8, screen.Y - height - 8))
+
+        local frame = Element {
+            ClassName              = "Frame",
+            Parent                 = menu.Gui,
+            Name                   = "MonoUIContextMenuFrame",
+            BackgroundColor3       = background,
+            BackgroundTransparency = 0.04,
+            BorderSizePixel        = 0,
+            Position               = UDim2.fromOffset(x, y),
+            Size                   = UDim2.fromOffset(width, height),
+            ZIndex                 = 50,
+        }
+        Element { ClassName = "UICorner", Parent = frame, CornerRadius = UDim.new(0, Theme.RowRadius) }
+        Element { ClassName = "UIStroke", Parent = frame, Color = Theme.Line, Transparency = 0.55, Thickness = 1 }
+
+        local title = Texted(frame, {
+            Text     = options.Title or "ACTIONS",
+            Size     = Theme.Type.Label,
+            Bold     = true,
+            Position = UDim2.fromOffset(12, 8),
+            Size2    = UDim2.new(1, -44, 0, 16),
+            ZIndex   = 51,
+        })
+        title.TextTruncate = Enum.TextTruncate.AtEnd
+
+        Texted(frame, {
+            Text     = options.Subtitle or "",
+            Tint     = "Muted",
+            Size     = Theme.Type.Support,
+            Bold     = false,
+            Position = UDim2.fromOffset(12, 25),
+            Size2    = UDim2.new(1, -24, 0, 11),
+            ZIndex   = 51,
+        })
+
+        local close = Element {
+            ClassName       = "TextButton",
+            Parent          = frame,
+            Name            = "Close",
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Font            = Enum.Font.GothamBold,
+            Text            = "X",
+            TextColor3      = mutedColor,
+            TextSize        = 12,
+            Position        = UDim2.new(1, -28, 0, 5),
+            Size            = UDim2.fromOffset(22, 20),
+            ZIndex          = 52,
+        }
+        close.MouseButton1Click:Connect(function()
+            menu:Close()
+        end)
+
+        Element {
+            ClassName       = "Frame",
+            Parent          = frame,
+            BackgroundColor3 = Theme.Line,
+            BackgroundTransparency = 0.5,
+            BorderSizePixel = 0,
+            Position        = UDim2.fromOffset(8, 42),
+            Size            = UDim2.new(1, -16, 0, 1),
+            ZIndex          = 51,
+        }
+
+        local cursorY = headerHeight
+
+        if hasPreview then
+            local preview = Element {
+                ClassName       = "Frame",
+                Parent          = frame,
+                Name            = "Preview",
+                BackgroundColor3 = Theme.Well,
+                BackgroundTransparency = 0.15,
+                BorderSizePixel = 0,
+                Position        = UDim2.fromOffset(8, cursorY - 4),
+                Size            = UDim2.new(1, -16, 0, previewHeight),
+                ZIndex          = 51,
+            }
+            Element { ClassName = "UICorner", Parent = preview, CornerRadius = UDim.new(0, 5) }
+            options.Preview(preview, width - 16, previewHeight)
+            cursorY += previewHeight + previewGap
+        end
+
+        for _, entry in ipairs(entries) do
+            local row = Element {
+                ClassName       = "TextButton",
+                Parent          = frame,
+                Name            = "Action",
+                BackgroundColor3 = Theme.Well,
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                AutoButtonColor = false,
+                Text            = "",
+                Position        = UDim2.fromOffset(sidePadding, cursorY),
+                Size            = UDim2.new(1, -sidePadding * 2, 0, rowHeight - 2),
+                ZIndex          = 51,
+            }
+            local label = Texted(row, {
+                Text     = entry.Label or "",
+                Size     = Theme.Type.Body,
+                Tint     = entry.Danger and "Danger" or "Text",
+                Bold     = false,
+                Position = UDim2.fromOffset(4, 0),
+                Size2    = UDim2.new(1, -8, 1, 0),
+                ZIndex   = 52,
+            })
+            if entry.Danger then
+                label.TextColor3 = dangerColor
+            end
+
+            row.MouseEnter:Connect(function()
+                row.BackgroundTransparency = 0.82
+            end)
+            row.MouseLeave:Connect(function()
+                row.BackgroundTransparency = 1
+            end)
+            row.MouseButton1Click:Connect(function()
+                local callback = entry.Callback
+                menu:Close()
+                if callback then
+                    task.spawn(callback)
+                end
+            end)
+
+            cursorY += rowHeight
+        end
+
+        local absolute = frame.AbsolutePosition
+        menu.Frame = frame
+        menu.Open = true
+        menu.Bounds = {
+            Min = Vector2.new(absolute.X, absolute.Y),
+            Max = Vector2.new(absolute.X + width, absolute.Y + height),
+        }
+    end
+
+    function menu:GetBounds()
+        return menu.Bounds
+    end
+
+    function menu:Destroy()
+        menu:Close()
+
+        if menu.Gui then
+            menu.Gui:Destroy()
+            menu.Gui = nil
+        end
+    end
+
+    return menu
+end
+
+-- A data-driven roster for any game: the caller supplies rows and two callbacks, and this owns
+-- search, case sensitivity, sort, grid/list mode, avatar cells, collapse, and friend/enemy marks.
+-- Row shape: { Id, Name, DisplayName, UserId, Rank, Distance, Speed, Gps, State, StateColor, Relation }
+function MonoUI:CreatePlayerList(settings)
+    settings = settings or {}
+    local width      = settings.Width or 680
+    local rowHeight  = settings.RowHeight or 30
+    local gridWidth  = settings.GridCellWidth or 206
+    local gridHeight = settings.GridCellHeight or 62
+    local muted      = settings.Muted or Theme.Muted
+    local relationColors = settings.RelationColors or {
+        Friend = Color3.fromRGB(80, 235, 140),
+        Enemy  = Color3.fromRGB(255, 105, 105),
+    }
+
+    local list = {
+        Gui       = nil,
+        Frame     = nil,
+        Body      = nil,
+        Layout    = nil,
+        Toolbar   = nil,
+        SearchRow = nil,
+        SearchBox = nil,
+        CaseButton = nil,
+        CollapseButton = nil,
+        ViewButton = nil,
+        SortButton = nil,
+        SpeedButton = nil,
+        RankButton = nil,
+        DistanceButton = nil,
+        Rows      = {},
+        Visible   = true,
+        Collapsed = false,
+        Grid      = false,
+        Sort      = "Name",
+        Ascending = true,
+        CaseSensitive = false,
+        SearchText = "",
+        ShowSpeed = true,
+        ShowRank = true,
+        ShowDistance = true,
+        RowMode = nil,
+    }
+
+    local function Label(parent, name, text, size, color, position, size2, zIndex)
+        local label = Element {
+            ClassName              = "TextLabel",
+            Parent                 = parent,
+            Name                   = name,
+            BackgroundTransparency = 1,
+            BorderSizePixel        = 0,
+            Font                   = Enum.Font.Gotham,
+            TextSize               = size,
+            TextColor3             = color or Theme.Text,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+            TextYAlignment         = Enum.TextYAlignment.Center,
+            Text                   = text or "",
+            Position               = position,
+            Size                   = size2,
+            ZIndex                 = zIndex or 12,
+        }
+        return label
+    end
+
+    local function Button(parent, name, text, position, size, callback)
+        local button = Element {
+            ClassName              = "TextButton",
+            Parent                 = parent,
+            Name                   = name,
+            BackgroundColor3       = Theme.Well,
+            BackgroundTransparency = 0.1,
+            BorderSizePixel        = 0,
+            AutoButtonColor        = false,
+            Font                   = Enum.Font.GothamBold,
+            TextSize               = Theme.Type.Support,
+            TextColor3             = Theme.Text,
+            Text                   = text,
+            Position               = position,
+            Size                   = size,
+            ZIndex                 = 13,
+        }
+        Element { ClassName = "UICorner", Parent = button, CornerRadius = UDim.new(0, 4) }
+        if callback then
+            button.MouseButton1Click:Connect(callback)
+        end
+        return button
+    end
+
+    local function UpdateLayout()
+        if not list.Frame then
+            return
+        end
+
+        list.Frame.Size = UDim2.fromOffset(width, list.Collapsed and 38 or 440)
+        list.SearchRow.Visible = not list.Collapsed
+        list.Body.Visible = not list.Collapsed
+        list.Body.Size = UDim2.new(1, -8, 0, list.Collapsed and 0 or 370)
+        list.CollapseButton.Text = list.Collapsed and "›" or "⌄"
+        list.ViewButton.Text = list.Grid and "GRID" or "LIST"
+        list.SortButton.Text = string.format("SORT %s %s", string.upper(list.Sort), list.Ascending and "↑" or "↓")
+        list.SpeedButton.BackgroundColor3 = list.ShowSpeed and Color3.fromRGB(35, 95, 65) or Theme.Well
+        list.RankButton.BackgroundColor3 = list.ShowRank and Color3.fromRGB(35, 95, 65) or Theme.Well
+        list.DistanceButton.BackgroundColor3 = list.ShowDistance and Color3.fromRGB(35, 95, 65) or Theme.Well
+        list.CaseButton.Text = list.CaseSensitive and "CASE: ON" or "CASE: OFF"
+        list.CaseButton.TextColor3 = list.CaseSensitive and Color3.fromRGB(35, 255, 120) or muted
+
+        local mode = list.Grid and "Grid" or "List"
+        if list.RowMode ~= mode then
+            list.RowMode = mode
+
+            for _, row in pairs(list.Rows) do
+                row.Frame:Destroy()
+            end
+            list.Rows = {}
+
+            if list.Layout then
+                list.Layout:Destroy()
+            end
+
+            if list.Grid then
+                list.Layout = Element {
+                    ClassName     = "UIGridLayout",
+                    Parent        = list.Body,
+                    CellSize      = UDim2.fromOffset(gridWidth, gridHeight),
+                    CellPadding   = UDim2.fromOffset(4, 4),
+                    SortOrder     = Enum.SortOrder.LayoutOrder,
+                }
+            else
+                list.Layout = Element {
+                    ClassName = "UIListLayout",
+                    Parent    = list.Body,
+                    Padding   = UDim.new(0, 2),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                }
+            end
+        end
+    end
+
+    local function CreateRow(rowData)
+        local frame = Element {
+            ClassName              = "TextButton",
+            Parent                 = list.Body,
+            Name                   = "Player_" .. tostring(rowData.Id or rowData.Name or "Row"),
+            BackgroundColor3       = Theme.Surface,
+            BackgroundTransparency = 0.12,
+            BorderSizePixel        = 0,
+            AutoButtonColor        = false,
+            Text                   = "",
+            ZIndex                 = 11,
+        }
+        Element { ClassName = "UICorner", Parent = frame, CornerRadius = UDim.new(0, 4) }
+
+        local avatar = Element {
+            ClassName              = "ImageLabel",
+            Parent                 = frame,
+            Name                   = "Avatar",
+            BackgroundTransparency = 1,
+            BorderSizePixel        = 0,
+            Image                  = rowData.UserId
+                and string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", rowData.UserId)
+                or "",
+            Visible                = false,
+            ZIndex                 = 12,
+        }
+        Element { ClassName = "UICorner", Parent = avatar, CornerRadius = UDim.new(0, 4) }
+
+        local name = Label(frame, "Name", rowData.Name or "", 11, Theme.Text, UDim2.fromOffset(8, 0), UDim2.fromOffset(150, rowHeight), 12)
+        name.Font = Enum.Font.GothamBold
+        local rank = Label(frame, "Rank", rowData.Rank or "", 10, muted, UDim2.fromOffset(165, 0), UDim2.fromOffset(70, rowHeight), 12)
+        local distance = Label(frame, "Distance", "", 10, muted, UDim2.fromOffset(240, 0), UDim2.fromOffset(75, rowHeight), 12)
+        local speed = Label(frame, "Speed", "", 10, muted, UDim2.fromOffset(320, 0), UDim2.fromOffset(70, rowHeight), 12)
+        local gps = Label(frame, "GPS", "GPS", 9, muted, UDim2.fromOffset(396, 0), UDim2.fromOffset(44, rowHeight), 12)
+        gps.Font = Enum.Font.GothamBold
+        gps.TextXAlignment = Enum.TextXAlignment.Center
+        local state = Label(frame, "State", "", 9, muted, UDim2.fromOffset(444, 0), UDim2.fromOffset(150, rowHeight), 12)
+        state.Font = Enum.Font.GothamBold
+        state.TextXAlignment = Enum.TextXAlignment.Center
+        local friend = Button(frame, "Friend", "F", UDim2.new(1, -46, 0, 5), UDim2.fromOffset(18, 20), function()
+            if settings.OnRelation then
+                settings.OnRelation(rowData.Id, "Friend")
+            end
+            list:Refresh()
+        end)
+        local enemy = Button(frame, "Enemy", "E", UDim2.new(1, -24, 0, 5), UDim2.fromOffset(18, 20), function()
+            if settings.OnRelation then
+                settings.OnRelation(rowData.Id, "Enemy")
+            end
+            list:Refresh()
+        end)
+
+        frame.MouseButton1Click:Connect(function()
+            if settings.OnSelect then
+                settings.OnSelect(rowData.Id)
+            end
+        end)
+
+        local data = {
+            Frame = frame, Avatar = avatar, Name = name, Rank = rank,
+            Distance = distance, Speed = speed, GPS = gps, State = state,
+            Friend = friend, Enemy = enemy,
+        }
+        list.Rows[rowData.Id] = data
+        return data
+    end
+
+    local function ApplyRowLayout(row)
+        if list.Grid then
+            row.Avatar.Visible = true
+            row.Avatar.Position = UDim2.fromOffset(6, 13)
+            row.Avatar.Size = UDim2.fromOffset(36, 36)
+            row.Name.Position = UDim2.fromOffset(50, 2)
+            row.Name.Size = UDim2.fromOffset(100, 16)
+            row.Rank.Position = UDim2.fromOffset(50, 20)
+            row.Rank.Size = UDim2.fromOffset(44, 14)
+            row.Distance.Position = UDim2.fromOffset(96, 20)
+            row.Distance.Size = UDim2.fromOffset(44, 14)
+            row.Speed.Position = UDim2.fromOffset(142, 20)
+            row.Speed.Size = UDim2.fromOffset(40, 14)
+            row.GPS.Position = UDim2.fromOffset(6, 1)
+            row.GPS.Size = UDim2.fromOffset(38, 12)
+            row.State.Position = UDim2.fromOffset(50, 42)
+            row.State.Size = UDim2.fromOffset(100, 12)
+            row.Friend.Position = UDim2.new(1, -46, 0, 6)
+            row.Enemy.Position = UDim2.new(1, -24, 0, 6)
+            row.Frame.Size = UDim2.fromOffset(gridWidth, gridHeight)
+        else
+            row.Avatar.Visible = false
+            row.Name.Position = UDim2.fromOffset(8, 0)
+            row.Name.Size = UDim2.fromOffset(150, rowHeight)
+            row.Rank.Position = UDim2.fromOffset(165, 0)
+            row.Rank.Size = UDim2.fromOffset(70, rowHeight)
+            row.Distance.Position = UDim2.fromOffset(240, 0)
+            row.Distance.Size = UDim2.fromOffset(75, rowHeight)
+            row.Speed.Position = UDim2.fromOffset(320, 0)
+            row.Speed.Size = UDim2.fromOffset(70, rowHeight)
+            row.GPS.Position = UDim2.fromOffset(396, 0)
+            row.GPS.Size = UDim2.fromOffset(44, rowHeight)
+            row.State.Position = UDim2.fromOffset(444, 0)
+            row.State.Size = UDim2.fromOffset(150, rowHeight)
+            row.Friend.Position = UDim2.new(1, -46, 0, 5)
+            row.Enemy.Position = UDim2.new(1, -24, 0, 5)
+            row.Frame.Size = UDim2.new(1, -4, 0, rowHeight)
+        end
+    end
+
+    local function SortKey(row)
+        if list.Sort == "Distance" then
+            return type(row.Distance) == "number" and row.Distance == row.Distance and row.Distance or math.huge
+        end
+        if list.Sort == "Rank" then
+            local ranks = { Owner = 1, Admin = 2, Unranked = 3 }
+            return ranks[row.Rank] or 4
+        end
+        return string.lower(row.Name or "")
+    end
+
+    function list:Refresh()
+        UpdateLayout()
+        if not list.Frame then
+            return
+        end
+
+        local rows = settings.GetRows and settings.GetRows() or {}
+        local ids = {}
+
+        for _, row in ipairs(rows) do
+            ids[row.Id] = true
+        end
+
+        for id, row in pairs(list.Rows) do
+            if not ids[id] then
+                row.Frame:Destroy()
+                list.Rows[id] = nil
+            end
+        end
+
+        local query = list.SearchText or ""
+        local lowerQuery = string.lower(query)
+        local filtered = {}
+
+        for _, row in ipairs(rows) do
+            local haystack = tostring(row.Name or "") .. " " .. tostring(row.DisplayName or "")
+            local matched = query == ""
+                or (list.CaseSensitive and string.find(haystack, query, 1, true) ~= nil)
+                or (not list.CaseSensitive and string.find(string.lower(haystack), lowerQuery, 1, true) ~= nil)
+
+            if matched then
+                filtered[#filtered + 1] = row
+            end
+        end
+
+        table.sort(filtered, function(left, right)
+            local leftKey, rightKey = SortKey(left), SortKey(right)
+
+            if type(leftKey) ~= type(rightKey) then
+                return tostring(leftKey) < tostring(rightKey)
+            end
+
+            if leftKey == rightKey then
+                return tostring(left.Name or "") < tostring(right.Name or "")
+            end
+
+            if list.Ascending then
+                return leftKey < rightKey
+            end
+
+            return leftKey > rightKey
+        end)
+
+        for _, row in pairs(list.Rows) do
+            row.Frame.Visible = false
+        end
+
+        for index, rowData in ipairs(filtered) do
+            local row = list.Rows[rowData.Id] or CreateRow(rowData)
+            ApplyRowLayout(row)
+            local relation = rowData.Relation
+            row.Frame.Visible = true
+            row.Frame.LayoutOrder = index
+            row.Name.Text = tostring(rowData.Name or "")
+            row.Name.TextColor3 = relationColors[relation] or Theme.Text
+            row.Rank.Text = tostring(rowData.Rank or "Unranked")
+            row.Rank.Visible = list.ShowRank
+            row.Distance.Text = type(rowData.Distance) == "number"
+                and string.format("%.0f%s", rowData.Distance, rowData.Gps and " GPS" or "")
+                or "N/A"
+            row.Distance.Visible = list.ShowDistance
+            row.Speed.Text = type(rowData.Speed) == "number" and string.format("%.0f mph", rowData.Speed) or "N/A"
+            row.Speed.Visible = list.ShowSpeed
+            row.GPS.TextColor3 = rowData.Gps and Color3.fromRGB(35, 255, 120) or Color3.fromRGB(255, 80, 80)
+            row.State.Text = tostring(rowData.State or "Unknown")
+            row.State.TextColor3 = rowData.StateColor or muted
+            row.Friend.BackgroundColor3 = relation == "Friend" and Color3.fromRGB(50, 150, 85) or Theme.Well
+            row.Enemy.BackgroundColor3 = relation == "Enemy" and Color3.fromRGB(170, 55, 55) or Theme.Well
+        end
+    end
+
+    local function Build()
+        local gui = Element {
+            ClassName      = "ScreenGui",
+            Parent         = UiContainer(),
+            Name           = settings.GuiName or "MonoUIPlayerList",
+            ResetOnSpawn   = false,
+            IgnoreGuiInset = true,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            DisplayOrder   = settings.DisplayOrder or 2147483001,
+        }
+        list.Gui = gui
+
+        local frame = Element {
+            ClassName              = "Frame",
+            Parent                 = gui,
+            Name                   = "PlayerListFrame",
+            BackgroundColor3       = Theme.Surface,
+            BackgroundTransparency = 0.04,
+            BorderSizePixel        = 0,
+            AnchorPoint            = Vector2.new(1, 0),
+            Position               = settings.Position or UDim2.new(1, -20, 0, 20),
+            Size                   = UDim2.fromOffset(width, 440),
+            ZIndex                 = 5,
+        }
+        Element { ClassName = "UICorner", Parent = frame, CornerRadius = UDim.new(0, 8) }
+        Element { ClassName = "UIStroke", Parent = frame, Color = Theme.Line, Transparency = 0.65, Thickness = 1 }
+        list.Frame = frame
+
+        local toolbar = Element {
+            ClassName = "Frame", Parent = frame, Name = "Toolbar",
+            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), ZIndex = 6,
+        }
+        list.Toolbar = toolbar
+        list.CollapseButton = Button(toolbar, "Collapse", "⌄", UDim2.fromOffset(4, 3), UDim2.fromOffset(22, 24), function()
+            list.Collapsed = not list.Collapsed
+            UpdateLayout()
+        end)
+        Label(toolbar, "Title", settings.Title or "PLAYERS", 12, Theme.Text, UDim2.fromOffset(32, 3), UDim2.fromOffset(72, 24), 7).Font = Enum.Font.GothamBold
+        list.ViewButton = Button(toolbar, "View", "LIST", UDim2.fromOffset(106, 3), UDim2.fromOffset(54, 24), function()
+            list.Grid = not list.Grid
+            UpdateLayout()
+            list:Refresh()
+        end)
+        list.SortButton = Button(toolbar, "Sort", "SORT NAME ↑", UDim2.fromOffset(164, 3), UDim2.fromOffset(118, 24), function()
+            if list.Sort == "Name" then list.Sort = "Distance"
+            elseif list.Sort == "Distance" then list.Sort = "Rank"
+            else list.Sort = "Name" end
+            list.Ascending = true
+            UpdateLayout()
+            list:Refresh()
+        end)
+        list.SpeedButton = Button(toolbar, "Speed", "SPD", UDim2.fromOffset(286, 3), UDim2.fromOffset(50, 24), function()
+            list.ShowSpeed = not list.ShowSpeed
+            UpdateLayout()
+            list:Refresh()
+        end)
+        list.RankButton = Button(toolbar, "Rank", "RANK", UDim2.fromOffset(340, 3), UDim2.fromOffset(50, 24), function()
+            list.ShowRank = not list.ShowRank
+            UpdateLayout()
+            list:Refresh()
+        end)
+        list.DistanceButton = Button(toolbar, "Distance", "DIST", UDim2.fromOffset(394, 3), UDim2.fromOffset(52, 24), function()
+            list.ShowDistance = not list.ShowDistance
+            UpdateLayout()
+            list:Refresh()
+        end)
+
+        local searchRow = Element { ClassName = "Frame", Parent = frame, Name = "SearchRow", BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 32), Size = UDim2.new(1, -8, 0, 26), ZIndex = 6 }
+        list.SearchRow = searchRow
+        local search = Element {
+            ClassName = "TextBox", Parent = searchRow, Name = "Search",
+            BackgroundColor3 = Theme.Well, BackgroundTransparency = 0.1, BorderSizePixel = 0,
+            Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Theme.Text,
+            PlaceholderText = "Search players...", PlaceholderColor3 = muted,
+            Text = "", ClearTextOnFocus = false, Size = UDim2.new(1, -92, 0, 26), ZIndex = 7,
+        }
+        Element { ClassName = "UICorner", Parent = search, CornerRadius = UDim.new(0, 4) }
+        search:GetPropertyChangedSignal("Text"):Connect(function()
+            list.SearchText = search.Text
+            list:Refresh()
+        end)
+        list.CaseButton = Button(searchRow, "Case", "CASE: OFF", UDim2.new(1, -88, 0, 0), UDim2.fromOffset(88, 26), function()
+            list.CaseSensitive = not list.CaseSensitive
+            UpdateLayout()
+            list:Refresh()
+        end)
+
+        local body = Element {
+            ClassName = "ScrollingFrame", Parent = frame, Name = "Players",
+            BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(4, 62),
+            Size = UDim2.new(1, -8, 0, 370), ScrollBarThickness = 4,
+            CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y, ZIndex = 6,
+        }
+        list.Body = body
+        UpdateLayout()
+    end
+
+    function list:SetVisible(visible)
+        list.Visible = visible and true or false
+        if list.Frame then
+            list.Frame.Visible = list.Visible
+        end
+        return list.Visible
+    end
+
+    function list:IsVisible()
+        return list.Visible
+    end
+
+    function list:Destroy()
+        if list.Gui then
+            list.Gui:Destroy()
+            list.Gui = nil
+        end
+        list.Frame = nil
+        list.Body = nil
+        table.clear(list.Rows)
+    end
+
+    Build()
+    list:Refresh()
+    return list
+end
+
+-- A centered, draggable profile card with two preview viewports, a text panel, per-section action
+-- buttons, friend/enemy state and a coordinate prompt. The caller supplies the profile through
+-- GetProfile(Id); preview builders receive a blank ViewportFrame and may attach their own camera.
+function MonoUI:CreatePlayerInfo(settings)
+    settings = settings or {}
+    local width      = settings.Width or 660
+    local height     = settings.Height or 420
+    local muted      = settings.Muted or Theme.Muted
+    local info = {
+        Gui = nil,
+        Frame = nil,
+        IsOpen = false,
+        Target = nil,
+        PreviewKey = nil,
+        ActionKey = nil,
+        ActionButtons = {},
+        VehicleActionButtons = {},
+        PlayerPanel = nil,
+        VehiclePanel = nil,
+        VehicleEmpty = nil,
+        InfoText = nil,
+        Title = nil,
+        RelationButtons = {},
+        TeleportDialog = nil,
+        TeleportInput = nil,
+        TeleportError = nil,
+        DragConnection = nil,
+        Dragging = false,
+        DragOffset = Vector2.zero,
+    }
+
+    local function Label(parent, name, text, size, color, position, size2, zIndex)
+        return Element {
+            ClassName              = "TextLabel",
+            Parent                 = parent,
+            Name                   = name,
+            BackgroundTransparency = 1,
+            BorderSizePixel        = 0,
+            Font                   = Enum.Font.Gotham,
+            TextSize               = size,
+            TextColor3             = color or Theme.Text,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+            TextYAlignment         = Enum.TextYAlignment.Top,
+            TextWrapped            = true,
+            Text                   = text or "",
+            Position               = position,
+            Size                   = size2,
+            ZIndex                 = zIndex or 12,
+        }
+    end
+
+    local function Button(parent, name, text, position, size, callback)
+        local button = Element {
+            ClassName              = "TextButton",
+            Parent                 = parent,
+            Name                   = name,
+            BackgroundColor3       = Theme.Well,
+            BackgroundTransparency = 0.1,
+            BorderSizePixel        = 0,
+            AutoButtonColor        = false,
+            Font                   = Enum.Font.GothamBold,
+            TextSize               = Theme.Type.Support,
+            TextColor3             = Theme.Text,
+            Text                   = text,
+            Position               = position,
+            Size                   = size,
+            ZIndex                 = 13,
+        }
+        Element { ClassName = "UICorner", Parent = button, CornerRadius = UDim.new(0, 4) }
+        if callback then
+            button.MouseButton1Click:Connect(callback)
+        end
+        return button
+    end
+
+    local function ClearViewport(viewport)
+        if not viewport then
+            return
+        end
+
+        viewport.CurrentCamera = nil
+
+        for _, child in ipairs(viewport:GetChildren()) do
+            child:Destroy()
+        end
+    end
+
+    local function BuildPreviewPanel(parent, name, position, size)
+        local panel = Element {
+            ClassName              = "Frame",
+            Parent                 = parent,
+            Name                   = name,
+            BackgroundColor3       = Theme.Well,
+            BackgroundTransparency = 0.15,
+            BorderSizePixel        = 0,
+            Position               = position,
+            Size                   = size,
+            ZIndex                 = 11,
+        }
+        Element { ClassName = "UICorner", Parent = panel, CornerRadius = UDim.new(0, 6) }
+
+        local viewport = Element {
+            ClassName              = "ViewportFrame",
+            Parent                 = panel,
+            Name                   = name .. "Viewport",
+            BackgroundTransparency = 1,
+            Ambient                = Color3.fromRGB(180, 180, 180),
+            LightColor             = Color3.fromRGB(255, 255, 255),
+            LightDirection         = Vector3.new(-0.4, -0.8, -0.5),
+            Position               = UDim2.fromOffset(1, 1),
+            Size                   = UDim2.new(1, -2, 1, -2),
+            ZIndex                 = 12,
+        }
+        return panel, viewport
+    end
+
+    local function BuildActions(actions, startX, startY, cellWidth)
+        for _, button in ipairs(info.ActionButtons) do
+            button:Destroy()
+        end
+        table.clear(info.ActionButtons)
+
+        for index, action in ipairs(actions or {}) do
+            local column = (index - 1) % 2
+            local row = math.floor((index - 1) / 2)
+            local button = Button(
+                info.Frame,
+                "Action" .. index,
+                action.Text or action.Label or "ACTION",
+                UDim2.fromOffset(startX + column * (cellWidth + 5), startY + row * 24),
+                UDim2.fromOffset(cellWidth, 21),
+                action.Callback
+            )
+
+            if action.Danger then
+                button.TextColor3 = settings.Danger or Color3.fromRGB(255, 95, 95)
+            end
+
+            table.insert(info.ActionButtons, button)
+        end
+    end
+
+    local function ActionSignature(actions)
+        local parts = {}
+        for _, action in ipairs(actions or {}) do
+            parts[#parts + 1] = tostring(action.Text or action.Label or "") .. (action.Danger and "!" or "")
+        end
+        return table.concat(parts, "|")
+    end
+
+    local function Ensure()
+        if info.Frame and info.Frame.Parent then
+            return
+        end
+
+        local gui = Element {
+            ClassName      = "ScreenGui",
+            Parent         = UiContainer(),
+            Name           = settings.GuiName or "MonoUIPlayerInfo",
+            ResetOnSpawn   = false,
+            IgnoreGuiInset = true,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            DisplayOrder   = settings.DisplayOrder or 2147483002,
+        }
+        info.Gui = gui
+
+        local frame = Element {
+            ClassName              = "Frame",
+            Parent                 = gui,
+            Name                   = "PlayerInfoFrame",
+            BackgroundColor3       = Theme.Surface,
+            BackgroundTransparency = 0.04,
+            BorderSizePixel        = 0,
+            Size                   = UDim2.fromOffset(width, height),
+            Visible                = false,
+            ZIndex                 = 10,
+        }
+        Element { ClassName = "UICorner", Parent = frame, CornerRadius = UDim.new(0, 9) }
+        Element { ClassName = "UIStroke", Parent = frame, Color = Theme.Line, Transparency = 0.6, Thickness = 1 }
+        info.Frame = frame
+
+        local titleBar = Element {
+            ClassName = "TextButton", Parent = frame, Name = "TitleBar",
+            BackgroundTransparency = 1, AutoButtonColor = false, Text = "",
+            Size = UDim2.new(1, 0, 0, 30), ZIndex = 11,
+        }
+        local title = Label(frame, "Title", "", 13, Theme.Text, UDim2.fromOffset(12, 6), UDim2.new(1, -48, 0, 18), 12)
+        title.Font = Enum.Font.GothamBold
+        info.Title = title
+        Button(frame, "Close", "X", UDim2.new(1, -30, 0, 5), UDim2.fromOffset(22, 20), function()
+            info:Close()
+        end)
+
+        local playerPanel, playerViewport = BuildPreviewPanel(frame, "PlayerPreview", UDim2.fromOffset(12, 40), UDim2.fromOffset(190, 224))
+        local vehiclePanel, vehicleViewport = BuildPreviewPanel(frame, "VehiclePreview", UDim2.fromOffset(212, 40), UDim2.fromOffset(220, 150))
+        info.PlayerPanel = playerPanel
+        info.PlayerViewport = playerViewport
+        info.VehiclePanel = vehiclePanel
+        info.VehicleViewport = vehicleViewport
+
+        info.VehicleEmpty = Label(vehiclePanel, "NoVehicle", "NO VEHICLE", 10, muted, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 13)
+        info.VehicleEmpty.TextXAlignment = Enum.TextXAlignment.Center
+        info.InfoText = Label(frame, "Info", "", 10, Theme.Text, UDim2.fromOffset(442, 40), UDim2.fromOffset(206, 300), 12)
+
+        info.RelationButtons = {
+            Friend = Button(frame, "Friend", "FRIEND", UDim2.fromOffset(12, 366), UDim2.fromOffset(100, 24), function()
+                if info.Target and settings.OnRelation then
+                    settings.OnRelation(info.Target, "Friend")
+                    info:Update()
+                end
+            end),
+            Enemy = Button(frame, "Enemy", "ENEMY", UDim2.fromOffset(120, 366), UDim2.fromOffset(100, 24), function()
+                if info.Target and settings.OnRelation then
+                    settings.OnRelation(info.Target, "Enemy")
+                    info:Update()
+                end
+            end),
+        }
+
+        local dialog = Element {
+            ClassName = "Frame", Parent = frame, Name = "TeleportDialog",
+            BackgroundColor3 = Theme.Surface, BackgroundTransparency = 0.02, BorderSizePixel = 0,
+            Position = UDim2.fromOffset(180, 140), Size = UDim2.fromOffset(300, 126),
+            Visible = false, ZIndex = 50,
+        }
+        Element { ClassName = "UICorner", Parent = dialog, CornerRadius = UDim.new(0, 6) }
+        Element { ClassName = "UIStroke", Parent = dialog, Color = Theme.Line, Transparency = 0.5, Thickness = 1 }
+        Label(dialog, "Title", "TELEPORT TARGET", 11, Theme.Text, UDim2.fromOffset(12, 8), UDim2.fromOffset(276, 18), 51).Font = Enum.Font.GothamBold
+        local input = Element {
+            ClassName = "TextBox", Parent = dialog, Name = "Coordinates",
+            BackgroundColor3 = Theme.Well, BackgroundTransparency = 0.05, BorderSizePixel = 0,
+            Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Theme.Text,
+            PlaceholderText = "X, Y, Z", PlaceholderColor3 = muted, Text = "",
+            ClearTextOnFocus = false, Position = UDim2.fromOffset(12, 30), Size = UDim2.fromOffset(276, 26), ZIndex = 52,
+        }
+        Element { ClassName = "UICorner", Parent = input, CornerRadius = UDim.new(0, 4) }
+        local errorLabel = Label(dialog, "Error", "", 9, settings.Danger or Color3.fromRGB(255, 95, 95), UDim2.fromOffset(12, 58), UDim2.fromOffset(276, 14), 51)
+        errorLabel.TextYAlignment = Enum.TextYAlignment.Center
+        info.TeleportDialog = dialog
+        info.TeleportInput = input
+        info.TeleportError = errorLabel
+
+        input.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
+                info:SubmitTeleport()
+            end
+        end)
+        Button(dialog, "Go", "TELEPORT", UDim2.fromOffset(12, 78), UDim2.fromOffset(130, 24), function()
+            info:SubmitTeleport()
+        end)
+        Button(dialog, "Cancel", "CANCEL", UDim2.fromOffset(158, 78), UDim2.fromOffset(130, 24), function()
+            dialog.Visible = false
+        end)
+
+        titleBar.InputBegan:Connect(function(inputObject)
+            if not info.IsOpen then
+                return
+            end
+
+            if inputObject.UserInputType == Enum.UserInputType.MouseButton1
+                or inputObject.UserInputType == Enum.UserInputType.Touch then
+                local mouse = UserInput:GetMouseLocation()
+                local position = frame.Position
+                info.Dragging = true
+                info.DragOffset = mouse - Vector2.new(position.X.Offset, position.Y.Offset)
+            end
+        end)
+    end
+
+    function info:SubmitTeleport()
+        local x, y, z = string.match(self.TeleportInput.Text, "^%s*([^,%s]+)%s*[,%s]+([^,%s]+)%s*[,%s]+([^,%s]+)")
+        local numberX, numberY, numberZ = tonumber(x), tonumber(y), tonumber(z)
+
+        if not numberX or not numberY or not numberZ then
+            self.TeleportError.Text = "Use X, Y, Z coordinates"
+            return
+        end
+
+        self.TeleportDialog.Visible = false
+
+        if self.Target and settings.OnTeleport then
+            settings.OnTeleport(self.Target, numberX, numberY, numberZ)
+        end
+    end
+
+    function info:PromptTeleport()
+        if not self.TeleportDialog then
+            return
+        end
+
+        local profile = self.Target and settings.GetProfile(self.Target) or nil
+        if profile and profile.TeleportPosition then
+            self.TeleportInput.Text = tostring(profile.TeleportPosition)
+        else
+            self.TeleportInput.Text = ""
+        end
+
+        self.TeleportError.Text = ""
+        self.TeleportDialog.Visible = true
+        self.TeleportInput:CaptureFocus()
+    end
+
+    function info:Open(id)
+        Ensure()
+        self.Target = id
+        self.PreviewKey = nil
+        self.ActionKey = nil
+        local viewport = Viewport()
+        local size = self.Frame.Size
+        self.Frame.Position = UDim2.fromOffset(
+            math.max(8, math.floor((viewport.X - size.X.Offset) * 0.5)),
+            math.max(8, math.floor((viewport.Y - size.Y.Offset) * 0.5))
+        )
+        self.Frame.Visible = true
+        self.IsOpen = true
+        self:Update()
+    end
+
+    function info:Update()
+        if not self.IsOpen or not self.Frame then
+            return
+        end
+
+        local profile = self.Target and settings.GetProfile(self.Target) or nil
+        if not profile then
+            self:Close()
+            return
+        end
+
+        self.Title.Text = profile.Title or ""
+        self.InfoText.Text = profile.Text or ""
+        local relation = profile.Relation or "Neutral"
+        self.RelationButtons.Friend.BackgroundColor3 = relation == "Friend" and Color3.fromRGB(50, 150, 85) or Theme.Well
+        self.RelationButtons.Enemy.BackgroundColor3 = relation == "Enemy" and Color3.fromRGB(170, 55, 55) or Theme.Well
+
+        local actionSignature = ActionSignature(profile.PlayerActions) .. "|" .. ActionSignature(profile.VehicleActions)
+        if self.ActionKey ~= actionSignature then
+            self.ActionKey = actionSignature
+            BuildActions(profile.PlayerActions or {}, 12, 268, 90)
+            local vehicleButtons = {}
+            for index, action in ipairs(profile.VehicleActions or {}) do
+                local column = (index - 1) % 2
+                local row = math.floor((index - 1) / 2)
+                local button = Button(
+                    self.Frame, "VehicleAction" .. index, action.Text or "ACTION",
+                    UDim2.fromOffset(212 + column * 115, 196 + row * 25), UDim2.fromOffset(109, 22), action.Callback
+                )
+                if action.Danger then button.TextColor3 = settings.Danger or Color3.fromRGB(255, 95, 95) end
+                table.insert(vehicleButtons, button)
+            end
+            for _, old in ipairs(self.VehicleActionButtons or {}) do old:Destroy() end
+            self.VehicleActionButtons = vehicleButtons
+        end
+
+        local previewKey = tostring(self.Target) .. ":" .. tostring(profile.PreviewKey or "")
+        if self.PreviewKey ~= previewKey then
+            self.PreviewKey = previewKey
+            ClearViewport(self.PlayerViewport)
+            ClearViewport(self.VehicleViewport)
+
+            if profile.PlayerPreview then
+                pcall(profile.PlayerPreview, self.PlayerViewport)
+            end
+
+            self.VehiclePanel.Visible = profile.VehiclePreview ~= nil
+            self.VehicleEmpty.Visible = profile.VehiclePreview == nil
+
+            if profile.VehiclePreview then
+                pcall(profile.VehiclePreview, self.VehicleViewport)
+            end
+        end
+    end
+
+    function info:Close()
+        if self.TeleportDialog then
+            self.TeleportDialog.Visible = false
+        end
+        ClearViewport(self.PlayerViewport)
+        ClearViewport(self.VehicleViewport)
+        self.IsOpen = false
+        self.Target = nil
+        self.PreviewKey = nil
+        self.ActionKey = nil
+        if self.Frame then
+            self.Frame.Visible = false
+        end
+
+        if settings.OnClose then
+            pcall(settings.OnClose)
+        end
+    end
+
+    function info:Destroy()
+        self:Close()
+        if self.DragConnection then
+            self.DragConnection:Disconnect()
+            self.DragConnection = nil
+        end
+        if self.Gui then
+            self.Gui:Destroy()
+            self.Gui = nil
+        end
+        self.Frame = nil
+    end
+
+    Ensure()
+    info.DragConnection = UserInput.InputChanged:Connect(function(inputObject)
+        if not info.IsOpen or not info.Dragging or not info.Frame then
+            return
+        end
+
+        if inputObject.UserInputType ~= Enum.UserInputType.MouseMovement
+            and inputObject.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+
+        local mouse = UserInput:GetMouseLocation()
+        info.Frame.Position = UDim2.fromOffset(
+            math.floor(mouse.X - info.DragOffset.X),
+            math.floor(mouse.Y - info.DragOffset.Y)
+        )
+    end)
+    UserInput.InputEnded:Connect(function(inputObject)
+        if inputObject.UserInputType == Enum.UserInputType.MouseButton1
+            or inputObject.UserInputType == Enum.UserInputType.Touch then
+            info.Dragging = false
+        end
+    end)
+
+    return info
 end
 
 --=== export ================================================================
