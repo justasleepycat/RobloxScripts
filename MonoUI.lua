@@ -1,4 +1,4 @@
--- Latest update: 10/16/2026 11:44 PM
+-- Latest update: 10/23/2026
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -32,6 +32,17 @@
     The named elements take the ArrayField-shaped table, so a script moving over from that
     hub only changes the names: Name / CurrentValue / Options / CurrentOption / Flag /
     Callback. Unknown keys are ignored rather than rejected.
+
+    On a phone or a tablet the same window is laid out for a fingertip, without the calling script
+    asking for it: the type scale and every control height grow a step, the plate is fitted to the
+    width of the screen instead of running off it, the body scrolls when a tab is taller than the
+    screen, a list opened in that body is lifted out of it so it is not clipped and opens upward
+    near the bottom edge, hover is dropped (a finger cannot hover, and the leave that would end it
+    never comes), a drag belongs to the one finger that started it, the title bar grows a hide
+    button because there is no Right Control, an input moves the window above the keyboard while
+    it has the caret, and the rain falls at a phone's budget with no cursor warp. The device is
+    asked once; MonoUI:SetTouch(false) or (true) forces either layout, as does
+    CreateWindow { Mobile = false }.
 ]]
 
 local Players     = game:GetService("Players")
@@ -40,6 +51,7 @@ local UserInput   = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local Workspace   = game:GetService("Workspace")
 local RunService  = game:GetService("RunService")
+local GuiService  = game:GetService("GuiService")
 
 local MonoUI = {}
 MonoUI.Debug = false
@@ -81,6 +93,25 @@ local Theme = {
     Width        = 720,                                                              -- default plate width
     Blur         = 16,                                                               -- backdrop blur, 0 for none
     VisibleRows  = 5,                                                                -- options shown before a dropdown scrolls
+    Metrics      = {                                                                 -- what a control is worth touching, one row of numbers
+        Row     = 30,                                                                -- a full-width control: switch, button
+        Inset   = 26,                                                                -- a control inside a row: input
+        Select  = 32,                                                                -- the well a dropdown shows its choice in
+        Bar     = 34,                                                                -- the title bar
+        Tab     = 28,                                                                -- a tab button, and one row of the strip
+        Section = 22,                                                                -- a section heading
+        MenuRow = 22,                                                                -- one option in a dropdown list
+        MenuGap = 2,                                                                 -- between two options
+        MenuPad = 4,                                                                 -- around the list
+        Knob    = 20,                                                                -- switch knob diameter
+        Hide    = 30,                                                                -- the hide button on a touch title bar
+    },
+    Mobile       = {                                                                 -- what a phone needs that a desktop does not
+        Margin          = 10,                                                        -- screen edge kept clear around a plate
+        MinScale        = 0.75,                                                      -- never shrink a plate past this to make it fit
+        MinWidth        = 260,                                                       -- a plate narrower than this is not worth laying out
+        LiftForKeyboard = true,                                                      -- move the plate out from under the keyboard while an input has the caret
+    },
     Rain         = {                                                                 -- drops behind the window while it is up, sized by weather rather than by dice
         Enabled        = true,
         Count          = 450,                                                        -- one Frame per drop: this is the biggest CPU cost in the file
@@ -98,12 +129,87 @@ local Theme = {
             GustRate = 0.15,                                                         -- how fast the gust wanders
         },
         Warp           = {                                                           -- the cursor bends the space the drops fall through
+            Enabled  = true,                                                         -- off on a touch screen, where there is no cursor to bend it
             Radius   = 220,                                                          -- pixels of space that bend: a cursor-sized well, not a pinprick
             Strength = 260,                                                          -- peak displacement, fold-free up to 3 * Radius
             Follow   = 14,                                                           -- how fast the well itself catches the cursor, in e-folds per second
         },
     },
 }
+
+--=== platform ==============================================================
+
+-- What the device can do, asked once. A phone and a desktop want different numbers out of the same
+-- layout: a fingertip needs a bigger target than a pointer, a mouse is the only thing that hovers, a
+-- phone screen is a limit a desktop window never has to think about, and there is no Right Control
+-- to hide by.
+local Platform = {
+    Touch    = UserInput.TouchEnabled,
+    Mouse    = UserInput.MouseEnabled,
+    Keyboard = UserInput.KeyboardEnabled,
+}
+
+-- Touch with no pointer: a phone, or a tablet held in two hands. Asked again per window through
+-- settings.Mobile, so either layout can be seen on any device without editing the theme.
+Platform.TouchOnly = Platform.Touch and not Platform.Mouse
+
+local Metrics = Theme.Metrics
+
+-- The numbers a touch device swaps in. Only the differences are written down; everything the table
+-- leaves out - the palette, the spacing scale, the rain's physics - is the same on both.
+local TouchProfile = {
+    Width       = 360,                                                               -- a design width a phone screen actually has
+    Blur        = 12,                                                                -- the same effect over fewer pixels
+    RainCount   = 140,                                                               -- one Frame per drop, so a third of the desktop shower
+    Warp        = false,                                                             -- a cursor lens with no cursor in it
+    VisibleRows = 4,                                                                 -- one fewer option before the list scrolls
+    Type        = { Title = 16, Heading = 12, Label = 14, Body = 13, Support = 10 },  -- one step up, because a phone is held further away
+    Space       = { Gap = 10, Pad = 16, Section = 20, Block = 24 },
+    Metrics     = {                                                                  -- every row at least a fingertip tall
+        Row = 44, Inset = 36, Select = 44, Bar = 48, Tab = 44, Section = 26,
+        MenuRow = 38, MenuGap = 4, MenuPad = 6, Knob = 26, Hide = 36,
+    },
+}
+
+-- The design values, kept so the profile can be swapped back and so a caller can see what the
+-- touch table is a departure from. A list, not a copy of the theme, because only these move.
+local DesktopProfile = {
+    Width       = Theme.Width,
+    Blur        = Theme.Blur,
+    RainCount   = Theme.Rain.Count,
+    Warp        = Theme.Rain.Warp.Enabled,
+    VisibleRows = Theme.VisibleRows,
+    Type        = { Title = Theme.Type.Title, Heading = Theme.Type.Heading, Label = Theme.Type.Label, Body = Theme.Type.Body, Support = Theme.Type.Support },
+    Space       = { Micro = Theme.Space.Micro, Gap = Theme.Space.Gap, Pad = Theme.Space.Pad, Section = Theme.Space.Section, Block = Theme.Space.Block },
+    Metrics     = {
+        Row = Metrics.Row, Inset = Metrics.Inset, Select = Metrics.Select, Bar = Metrics.Bar, Tab = Metrics.Tab, Section = Metrics.Section,
+        MenuRow = Metrics.MenuRow, MenuGap = Metrics.MenuGap, MenuPad = Metrics.MenuPad, Knob = Metrics.Knob, Hide = Metrics.Hide,
+    },
+}
+
+-- Applied in place: every table a caller may already be holding - MonoUI.Theme, MonoUI.Metrics -
+-- stays the same table and simply holds the other set of numbers.
+local function ApplyProfile(profile)
+    Theme.Width             = profile.Width
+    Theme.Blur              = profile.Blur
+    Theme.Rain.Count        = profile.RainCount
+    Theme.Rain.Warp.Enabled = profile.Warp
+    Theme.VisibleRows       = profile.VisibleRows
+
+    for key, value in pairs(profile.Type) do Theme.Type[key] = value end
+    for key, value in pairs(profile.Space) do Theme.Space[key] = value end
+    for key, value in pairs(profile.Metrics) do Metrics[key] = value end
+end
+
+-- One switch for the whole library, because the layout decisions below are made while controls are
+-- being built and have to agree with each other: a window cannot have touch rows in a desktop body.
+function MonoUI:SetTouch(touch)
+    MonoUI.Touch = touch and true or false
+    ApplyProfile(MonoUI.Touch and TouchProfile or DesktopProfile)
+    return MonoUI.Touch
+end
+
+MonoUI:SetTouch(Platform.TouchOnly)
 
 --=== reporting =============================================================
 
@@ -641,14 +747,28 @@ local function Apply(instance, channel, properties, animate)
     Snap(instance, properties)
 end
 
--- The four states of anything clickable, wired once: rest, hover, the press, and back to hover
--- when the press ends inside the control. Hover and press are transparency changes, never colour
--- changes - that is what keeps a glass surface reading as one material.
+-- The states of anything clickable, wired once: rest, hover, the press, and the way back when the
+-- press ends. Hover and press are transparency changes, never colour changes - that is what keeps a
+-- glass surface reading as one material.
+--
+-- Hover is a mouse state, though: a finger cannot rest over a control without pressing it, and a
+-- device with no pointer never sends the leave that would end the hover - which is what used to
+-- leave a tapped row sitting a shade denser than the one beside it for the rest of the session.
+-- Without a pointer the press is the whole feedback, and it returns to rest.
 local function Hoverable(instance, looks)
-    instance.MouseEnter:Connect(function()        Motion.Play(instance, "Hover", looks.Hover) end)
-    instance.MouseLeave:Connect(function()        Motion.Play(instance, "Hover", looks.Rest)  end)
-    instance.MouseButton1Down:Connect(function()  Motion.Play(instance, "Press", looks.Press) end)
-    instance.MouseButton1Up:Connect(function()    Motion.Play(instance, "Press", looks.Hover) end)
+    if not MonoUI.Touch then
+        instance.MouseEnter:Connect(function() Motion.Play(instance, "Hover", looks.Hover) end)
+        instance.MouseLeave:Connect(function() Motion.Play(instance, "Hover", looks.Rest)  end)
+    end
+
+    instance.MouseButton1Down:Connect(function() Motion.Play(instance, "Press", looks.Press) end)
+    instance.MouseButton1Up:Connect(function()   Motion.Play(instance, "Press", MonoUI.Touch and looks.Rest or looks.Hover) end)
+
+    -- A finger lifted off a control ends its press whether or not that counted as a click.
+    instance.InputEnded:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.Touch then return end
+        Motion.Play(instance, "Press", looks.Rest)
+    end)
 end
 
 local RowLooks = {
@@ -659,12 +779,148 @@ local RowLooks = {
 
 -- A plate grows the last few percent into place when it is shown, so it arrives rather than
 -- appears. The Scale is looked up by name: a plate built by hand without one is simply left alone,
--- which is what keeps this optional for anyone laying out their own surface.
+-- which is what keeps this optional for anyone laying out their own surface. The fit the plate was
+-- given by FitSurface is the scale it settles on, so a window shrunk to fit a phone still arrives
+-- rather than appears - and does not lose its fit on the way in.
 local function Reveal(plate)
     local scale = plate:FindFirstChild("Scale")
     if scale == nil then return end
-    scale.Scale = Theme.RevealScale
-    Motion.Play(scale, "Open", { Scale = 1 })
+
+    local fit = plate:GetAttribute("FitScale") or 1
+    scale.Scale = fit * Theme.RevealScale
+    Motion.Play(scale, "Open", { Scale = fit })
+end
+
+--=== screen ================================================================
+
+-- The space the window is drawn in. Everything below measures against this rather than against a
+-- number, because on a phone it is a different number every time the device is turned.
+local function Viewport()
+    local camera = Workspace.CurrentCamera
+    return camera and camera.ViewportSize or Vector2.new(1920, 1080)
+end
+
+-- The safe area's top edge, in screen pixels. The gui ignores the inset, so the window is allowed to
+-- draw behind the topbar and the notch - which is only safe if the title bar is placed by hand.
+local function TopInset()
+    local ok, inset = pcall(function()
+        return GuiService:GetGuiInset()
+    end)
+    if ok and typeof(inset) == "Vector2" then
+        return inset.Y
+    end
+    return 0
+end
+
+-- A surface's on-screen size against its size in design pixels: the factor a pointer delta has to be
+-- divided by when a UIScale is shrinking the whole window to fit.
+local function SurfaceScale(surface)
+    local design = surface.Size.X.Offset
+    if design <= 0 then return 1 end
+    return math.max(surface.AbsoluteSize.X / design, 0.05)
+end
+
+-- The nearest ancestor of a given class, which is how a control finds the scroller it was laid out
+-- in without having to be told about it.
+local function AncestorOfClass(instance, className)
+    local node = instance.Parent
+    while node ~= nil do
+        if node.ClassName == className then
+            return node
+        end
+        node = node.Parent
+    end
+    return nil
+end
+
+-- The plate a control belongs to: the nearest ancestor that is a direct child of the gui.
+local function PlateOf(instance)
+    local node = instance
+    while node ~= nil and node.Parent ~= nil and node.Parent.ClassName ~= "ScreenGui" do
+        node = node.Parent
+    end
+    return node
+end
+
+-- Assigned with the app, which is where the plates that own a keyboard are known. An input calls
+-- these when it takes focus and when it lets go.
+local LiftForKeyboard
+local DropLift
+
+-- Assigned with the app, where the overlay a list escapes into lives. A dropdown calls this as it
+-- opens, so it has to be in scope here, before the controls are built.
+local PlaceMenu
+
+-- The width a plate gets. A desktop hands back what was asked for; a phone keeps the request but
+-- takes it down to what is on the screen, because a window laid out past the edge is a window with
+-- controls the user cannot reach.
+local function PlateWidth(requested)
+    local width = requested or Theme.Width
+    if not MonoUI.Touch then return width end
+
+    local room = Viewport().X - Theme.Mobile.Margin * 2
+    return math.max(math.min(width, room), math.min(Theme.Mobile.MinWidth, room))
+end
+
+-- Where the first plate lands. Centred under the safe area on a phone, so it does not open under
+-- the notch; at the same 80, 120 a desktop window has always opened at on a desktop.
+local function PlatePosition(width, order)
+    if not MonoUI.Touch then
+        return UDim2.fromOffset(80, 120 + ((order or 1) - 1) * 24)
+    end
+
+    local screen = Viewport()
+    local step   = math.min(24, ((order or 1) - 1) * 12)
+    return UDim2.fromOffset(
+        math.max(Theme.Mobile.Margin, math.floor((screen.X - width) / 2)),
+        TopInset() + Theme.Mobile.Margin + step
+    )
+end
+
+-- A phone can be narrower than a plate is designed to be, so the plate is scaled rather than laid
+-- out off the screen: one UIScale for the whole window, never per control, so the type scale keeps
+-- its relationships. The fit is kept on the plate as an attribute because that is where Reveal
+-- reads it back from.
+local function FitSurface(plate, width)
+    local fit = 1
+    if MonoUI.Touch then
+        local room = Viewport().X - Theme.Mobile.Margin * 2
+        fit = math.clamp(room / math.max(width, 1), Theme.Mobile.MinScale, 1)
+    end
+
+    plate:SetAttribute("FitScale", fit)
+
+    local scale = plate:FindFirstChild("Scale")
+    if scale ~= nil then
+        scale.Scale = fit
+    end
+    return fit
+end
+
+-- After a fit or a rotation a plate may be hanging off an edge it used to be clear of; the rule is
+-- the same one the drag keeps: the bar stays on the screen, which is where it can be grabbed again.
+local function ClampSurface(plate)
+    if not MonoUI.Touch then return end
+
+    local screen   = Viewport()
+    local size     = plate.AbsoluteSize
+    local position = plate.Position
+    plate.Position = UDim2.new(
+        position.X.Scale, math.clamp(position.X.Offset, 8 - size.X + 60, screen.X - 60),
+        position.Y.Scale, math.clamp(position.Y.Offset, TopInset() + Theme.Mobile.Margin * 0.5, screen.Y - 40)
+    )
+end
+
+-- Turning the device, or resizing a window, changes the space the plate was fitted to. The plate is
+-- re-fitted rather than left hanging off an edge it was clear of a moment ago, so the window that
+-- was laid out in portrait is still usable after a rotation into landscape.
+local function WatchViewport(owner)
+    local camera = Workspace.CurrentCamera
+    if camera == nil then return end
+
+    owner.connections[#owner.connections + 1] = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+        if owner.Refit ~= nil then owner.Refit() end
+    end)
 end
 
 --=== layout ================================================================
@@ -691,38 +947,33 @@ local function UiContainer()
 end
 
 -- Drag from any handle: a title bar, the plate itself, or a chip while a window is hidden.
--- Movement is measured as a mouse delta from where the plate already is, never against
+-- Movement is measured as a pointer delta from where the plate already is, never against
 -- AbsolutePosition - that one includes the GUI inset while Position does not, which is what
--- makes a naive drag jump on its first frame. A press only becomes a drag after the
--- threshold.
+-- makes a naive drag jump on its first frame. A press only becomes a drag after the threshold.
+--
+-- One pointer owns the drag, and it is the one that started it: a second finger landing anywhere on
+-- the screen used to move the window as well, which on a phone happens constantly. A touch carries
+-- its own position, so the touch itself is watched; a mouse button does not, so its movement
+-- arrives as separate MouseMovement inputs. Either way the delta is divided by the window's fit,
+-- so a plate that was scaled down to fit the screen still follows the finger exactly.
 local function Dragging(owner, target, ...)
-    local drag    = { active = false, moved = false, start = Vector2.zero, base = nil }
     local handles = { ... }
+    local drag    = { input = nil, moved = false, start = Vector2.zero, base = nil, watch = nil, follow = nil }
 
-    for _, handle in ipairs(handles) do
-        owner.connections[#owner.connections + 1] = handle.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                drag.active = true
-                drag.moved  = false
-                drag.start  = Vector2.new(input.Position.X, input.Position.Y)
-                drag.base   = target.Position
-                input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then
-                        drag.active = false
-                    end
+    local function Untrack()
+        for _, connection in ipairs({ drag.watch, drag.follow }) do
+            if connection ~= nil then
+                pcall(function()
+                    connection:Disconnect()
                 end)
             end
-        end)
+        end
+        drag.watch  = nil
+        drag.follow = nil
+        drag.input  = nil
     end
 
-    owner.connections[#owner.connections + 1] = UserInput.InputChanged:Connect(function(input)
-        if not drag.active then
-            return
-        end
-        if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
-            return
-        end
-
+    local function Move(input)
         local wanted = Vector2.new(input.Position.X, input.Position.Y)
         local stepX  = wanted.X - drag.start.X
         local stepY  = wanted.Y - drag.start.Y
@@ -733,14 +984,53 @@ local function Dragging(owner, target, ...)
             drag.moved = true
         end
 
-        local camera  = Workspace.CurrentCamera
-        local screen  = camera and camera.ViewportSize or Vector2.new(1920, 1080)
-        local wantedX = drag.base.X.Offset + stepX
-        local wantedY = drag.base.Y.Offset + stepY
+        local screen  = Viewport()
+        local scale   = SurfaceScale(target)
+        local size    = target.AbsoluteSize / scale
+        local floor   = MonoUI.Touch and (TopInset() + 4) or 8
+        local wantedX = drag.base.X.Offset + stepX / scale
+        local wantedY = drag.base.Y.Offset + stepY / scale
         target.Position = UDim2.new(
-            drag.base.X.Scale, math.clamp(wantedX, 8 - target.AbsoluteSize.X + 60, screen.X - 60),
-            drag.base.Y.Scale, math.clamp(wantedY, 8, screen.Y - 40)
+            drag.base.X.Scale, math.clamp(wantedX, 8 - size.X + 60, screen.X - 60),
+            drag.base.Y.Scale, math.clamp(wantedY, floor, screen.Y - 40)
         )
+    end
+
+    local function Begin(input)
+        if drag.input ~= nil then return end                                         -- the drag already has an owner
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+
+        drag.input  = input
+        drag.moved  = false
+        drag.start  = Vector2.new(input.Position.X, input.Position.Y)
+        drag.base   = target.Position
+        owner.lifted = nil                                                           -- a place the user chose is not a place to put back
+
+        drag.watch = input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End or input.UserInputState == Enum.UserInputState.Cancel then
+                Untrack()
+            end
+        end)
+        owner.connections[#owner.connections + 1] = drag.watch
+
+        if input.UserInputType == Enum.UserInputType.Touch then
+            drag.follow = input:GetPropertyChangedSignal("Position"):Connect(function()
+                Move(input)
+            end)
+            owner.connections[#owner.connections + 1] = drag.follow
+        end
+    end
+
+    for _, handle in ipairs(handles) do
+        owner.connections[#owner.connections + 1] = handle.InputBegan:Connect(Begin)
+    end
+
+    -- The mouse's side of the same drag; a touch never gets here, because it is followed above.
+    owner.connections[#owner.connections + 1] = UserInput.InputChanged:Connect(function(input)
+        if drag.input == nil or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            return
+        end
+        Move(input)
     end)
 
     return drag
@@ -791,11 +1081,14 @@ local SwitchLooks = {
 }
 
 local function Switch(properties)
+    local knobSize = Metrics.Knob
+    local knobGap  = 3
+
     local track = Sticker(Element {
         ClassName       = "TextButton",
         Parent          = properties.Parent,
         Name            = properties.Name or properties.Caption or "Switch",
-        Size            = properties.Size or UDim2.new(1, 0, 0, 30),
+        Size            = properties.Size or UDim2.new(1, 0, 0, Metrics.Row),
         AutoButtonColor = false,
         Text            = "",
         LayoutOrder     = properties.Order or 1,
@@ -807,8 +1100,8 @@ local function Switch(properties)
         ClassName   = "Frame",
         Parent      = track,
         Name        = "Knob",
-        Size        = UDim2.new(0, 20, 0, 20),
-        Position    = UDim2.new(0, 3, 0.5, -10),
+        Size        = UDim2.fromOffset(knobSize, knobSize),
+        Position    = UDim2.new(0, knobGap, 0.5, -knobSize / 2),
         ZIndex      = 3,
     }, { Color = "Muted", Corner = 0.5 })
 
@@ -816,8 +1109,8 @@ local function Switch(properties)
         Text     = string.upper(properties.Caption or "TOGGLE"),
         Tint     = "Text",
         Size     = Theme.Type.Heading,
-        Position = UDim2.fromOffset(28, 0),
-        Size2    = UDim2.new(1, -55, 1, 0),
+        Position = UDim2.fromOffset(knobSize + 8, 0),
+        Size2    = UDim2.new(1, -(knobSize + 35), 1, 0),
         ZIndex   = 4,
     })
 
@@ -825,7 +1118,7 @@ local function Switch(properties)
 
     local function Render(animate)
         local look     = SwitchLooks[state]
-        local position = state and UDim2.new(1, -23, 0.5, -10) or UDim2.new(0, 3, 0.5, -10)
+        local position = state and UDim2.new(1, -(knobSize + knobGap), 0.5, -knobSize / 2) or UDim2.new(0, knobGap, 0.5, -knobSize / 2)
 
         Apply(knob,    "Switch", { Position = position, BackgroundColor3 = look.Knob }, animate)
         Apply(caption, "Switch", { TextColor3 = look.Caption },                         animate)
@@ -865,7 +1158,7 @@ local function Select(properties)
         ClassName       = "TextButton",
         Parent          = properties.Parent,
         Name            = properties.Name or properties.Caption or "Select",
-        Size            = properties.Size or UDim2.new(1, 0, 0, properties.Height or 32),
+        Size            = properties.Size or UDim2.new(1, 0, 0, properties.Height or Metrics.Select),
         AutoButtonColor = false,
         Text            = "",
         LayoutOrder     = properties.Order or 1,
@@ -890,11 +1183,16 @@ local function Select(properties)
         ZIndex   = 3,
     })
 
+    -- The list is exactly as tall as the options it shows, in the same metrics as the entries, so a
+    -- touch list scrolls at a thumb's size rather than a mouse's.
+    local shown = math.min(#options, properties.VisibleRows or Theme.VisibleRows)
+    local list  = (shown * Metrics.MenuRow) + (math.max(shown - 1, 0) * Metrics.MenuGap) + (Metrics.MenuPad * 2)
+
     local menu = Sticker(Element {
         ClassName           = "ScrollingFrame",
         Parent              = row,
         Name                = "Menu",
-        Size                = UDim2.new(1, 0, 0, (math.min(#options, properties.VisibleRows or Theme.VisibleRows) * 24) + 8),
+        Size                = UDim2.new(1, 0, 0, list),
         Position            = UDim2.new(0, 0, 1, 4),
         BorderSizePixel     = 0,
         ScrollBarThickness  = 4,
@@ -902,13 +1200,14 @@ local function Select(properties)
         CanvasSize          = UDim2.new(0, 0, 0, 0),
         Visible             = false,
         ZIndex              = 50,
-    }, { Color = "Surface", Alpha = Theme.MenuAlpha, Corner = "RowRadius", Stroke = "Line", Rim = true, Glass = true, Padding = { 4, 4, 4, 4 } })
+    }, { Color = "Surface", Alpha = Theme.MenuAlpha, Corner = "RowRadius", Stroke = "Line", Rim = true, Glass = true,
+         Padding = { Metrics.MenuPad, Metrics.MenuPad, Metrics.MenuPad, Metrics.MenuPad } })
 
     Element {
         ClassName = "UIListLayout",
         Parent    = menu,
         Name      = "Layout",
-        Padding   = UDim.new(0, 2),
+        Padding   = UDim.new(0, Metrics.MenuGap),
         SortOrder = Enum.SortOrder.LayoutOrder,
     }
 
@@ -937,7 +1236,7 @@ local function Select(properties)
             ClassName       = "TextButton",
             Parent          = menu,
             Name            = option,
-            Size            = UDim2.new(1, 0, 0, 22),
+            Size            = UDim2.new(1, 0, 0, Metrics.MenuRow),
             AutoButtonColor = false,
             Text            = "",
             LayoutOrder     = index,
@@ -963,8 +1262,17 @@ local function Select(properties)
         end)
     end
 
+    -- Opening is the moment the list learns where the row is: a list that has been scrolled or
+    -- re-parented since the last time it opened cannot have kept a position from then.
+    local function SetMenuOpen(open)
+        if open and PlaceMenu ~= nil then
+            PlaceMenu(menu, row)
+        end
+        menu.Visible = open
+    end
+
     row.MouseButton1Click:Connect(function()
-        menu.Visible = not menu.Visible
+        SetMenuOpen(not menu.Visible)
     end)
 
     Render(tostring(properties.Value or options[1] or "—"))
@@ -990,7 +1298,7 @@ local function Input(properties)
         ClassName         = "TextBox",
         Parent            = properties.Parent,
         Name              = properties.Name or "Input",
-        Size              = properties.Size or UDim2.new(0, properties.Width or 50, 0, 26),
+        Size              = properties.Size or UDim2.new(0, properties.Width or 50, 0, Metrics.Inset),
         Position          = properties.Position,
         ClearTextOnFocus  = false,
         Text              = properties.Text or properties.CurrentValue or "",
@@ -1059,6 +1367,11 @@ local function Input(properties)
     box.Focused:Connect(function()   Motion.Play(stroke, "Hover", { Transparency = Theme.FocusAlpha }) end)
     box.FocusLost:Connect(function() Motion.Play(stroke, "Hover", { Transparency = Theme.LineAlpha  }) end)
 
+    -- On a phone the keyboard is a slab over the bottom of the screen, so the window the box lives
+    -- in moves up while the caret is in it.
+    box.Focused:Connect(function()  LiftForKeyboard(box) end)
+    box.FocusLost:Connect(function() DropLift(box) end)
+
     return box
 end
 
@@ -1067,7 +1380,7 @@ local function Button(properties)
         ClassName       = "TextButton",
         Parent          = properties.Parent,
         Name            = properties.Name or properties.Caption or "Button",
-        Size            = properties.Size or UDim2.new(1, 0, 0, 30),
+        Size            = properties.Size or UDim2.new(1, 0, 0, Metrics.Row),
         Position        = properties.Position,
         AutoButtonColor = false,
         Text            = "",
@@ -1100,7 +1413,7 @@ end
 
 -- A section is a heading and a hairline, the way the window separates its parts.
 local function Heading(parent, order, text)
-    local header = Row(parent, order, 22)
+    local header = Row(parent, order, Metrics.Section)
 
     Texted(header, {
         Text     = string.upper(text or "SECTION"),
@@ -1284,7 +1597,7 @@ local function CreateRegion(frame)
 
     function region:CreateInput(settings)
         settings = settings or {}
-        local row = region:CreateRow(28)
+        local row = region:CreateRow(Metrics.Inset + 2)
 
         Texted(row, {
             Text     = string.upper(settings.Name or "INPUT"),
@@ -1298,7 +1611,7 @@ local function CreateRegion(frame)
             Parent           = row,
             Name             = settings.Name,
             Order            = 1,
-            Size             = UDim2.new(0.55, 0, 0, 26),
+            Size             = UDim2.new(0.55, 0, 0, Metrics.Inset),
             Position         = UDim2.new(1, 0, 0.5, 0),
             PlaceholderText  = settings.PlaceholderText,
             NumbersOnly      = settings.NumbersOnly,
@@ -1351,7 +1664,7 @@ end
 
 -- clock, appliedAngle and lens are the rain's own state: the clock drives the gusts, appliedAngle is
 -- the lean the drops were last rotated to, and lens is the eased cursor the warp is centred on.
-local App = { gui = nil, blur = nil, rain = nil, rainConnection = nil, streaks = {}, connections = {}, windows = {}, plates = {}, surfaces = {},
+local App = { gui = nil, overlay = nil, blur = nil, rain = nil, rainConnection = nil, streaks = {}, connections = {}, windows = {}, plates = {}, surfaces = {},
     clock = 0, appliedAngle = 0, lens = nil, seededWidth = nil }
 
 local function EnsureGui(name)
@@ -1368,7 +1681,108 @@ local function EnsureGui(name)
         DisplayOrder   = 2147483000,
         ZIndexBehavior = Enum.ZIndexBehavior.Global,
     }
+
+    -- The layer anything inside a window can escape into: a dropdown list opened inside a scrolling
+    -- body would be clipped by it, so the list is re-parented here and placed by hand. Zero-sized
+    -- and without a layout of its own, so it costs the plate nothing at all.
+    App.overlay = Element {
+        ClassName              = "Frame",
+        Parent                 = App.gui,
+        Name                   = "Overlay",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.fromOffset(0, 0),
+        ZIndex                 = 40,
+    }
     return App.gui
+end
+
+-- The plate each control belongs to, so a control deep inside a tab can find the window that has to
+-- move out of the keyboard's way without being handed it at creation.
+local PlateObjects = {}
+
+-- A phone's keyboard covers the bottom half of the screen, and the box the caret is in is usually
+-- the last thing laid out. So the window steps above the keyboard when an input takes focus, and
+-- comes back when it lets go - unless the user dragged it somewhere in the meantime, which is a
+-- place they chose and not one to take back.
+function LiftForKeyboard(box)
+    if not MonoUI.Touch or not Theme.Mobile.LiftForKeyboard then return end
+
+    local surface = box
+    while surface ~= nil and PlateObjects[surface] == nil do
+        surface = surface.Parent
+    end
+
+    local object = surface and PlateObjects[surface]
+    if object == nil or object.lifted ~= nil then return end
+    if box.AbsolutePosition.Y < Viewport().Y * 0.45 then return end
+
+    object.lifted = object.plate.Position
+    object.plate.Position = UDim2.new(object.lifted.X.Scale, object.lifted.X.Offset, 0, TopInset() + Theme.Mobile.Margin)
+end
+
+function DropLift(box)
+    local surface = box
+    while surface ~= nil and PlateObjects[surface] == nil do
+        surface = surface.Parent
+    end
+
+    local object = surface and PlateObjects[surface]
+    if object == nil or object.lifted == nil then return end
+
+    object.plate.Position = object.lifted
+    object.lifted = nil
+end
+
+-- A phone's strip is only as wide as the phone, so the cells are cut to the number of tabs and
+-- allowed to wrap instead of running off the edge: a tab is never narrower than a fingertip, and
+-- the strip grows by a row rather than hiding the tab that did not fit.
+local function ArrangeTabs(window)
+    if not MonoUI.Touch then return end
+
+    local count = #window.tabs
+    local grid  = window.grid
+    if count == 0 or grid == nil then return end
+
+    local gap    = Theme.Space.Gap
+    local room   = window.width - (Theme.Space.Pad * 2)
+    local perRow = math.max(1, math.min(count, math.floor((room + gap) / ((Metrics.Row * 2) + gap))))
+    local rows   = math.ceil(count / perRow)
+    local cell   = (room - (gap * (perRow - 1))) / perRow
+    local height = (rows * Metrics.Tab) + ((rows - 1) * gap)
+
+    grid.CellSize              = UDim2.new(0, cell, 0, Metrics.Tab)
+    grid.CellPadding           = UDim2.new(0, gap, 0, gap)
+    grid.FillDirectionMaxCells = perRow
+    window.strip.Size          = UDim2.new(1, 0, 0, height)
+    window.viewport.Reserve    = count > 1 and height or 0                              -- a lone tab needs no strip at all
+    window.viewport:Resize()
+end
+
+-- A list opened inside a scroller is lifted out of it, because the scroller would cut it off at the
+-- first row past its own edge. It is placed against the row it belongs to, in the row's own width,
+-- and it opens upward when there is no room below - the row that needs a list can be the last one
+-- on the screen, and a list that opens off the bottom is a list that cannot be used.
+function PlaceMenu(menu, row)
+    if AncestorOfClass(row, "ScrollingFrame") == nil then return end                -- nothing is clipping it
+    local overlay = App.overlay
+    local plate   = PlateOf(row)
+    if overlay == nil or plate == nil then return end
+
+    local scale  = SurfaceScale(plate)
+    local screen = Viewport()
+    local height = menu.Size.Y.Offset
+    local shift  = 4                                                                 -- the gap the list keeps from its row
+    local top    = row.AbsolutePosition.Y
+    local bottom = top + row.AbsoluteSize.Y
+    local upward = bottom + ((height + shift) * scale) > (screen.Y - Theme.Mobile.Margin)
+
+    menu.Parent      = overlay
+    menu.AnchorPoint = upward and Vector2.new(0, 1) or Vector2.new(0, 0)
+    menu.Size        = UDim2.fromOffset(row.AbsoluteSize.X / scale, height)
+    menu.Position    = UDim2.fromOffset(
+        (row.AbsolutePosition.X - overlay.AbsolutePosition.X) / scale,
+        (top - overlay.AbsolutePosition.Y + (upward and -(shift * scale) or ((row.AbsoluteSize.Y + shift) * scale))) / scale
+    )
 end
 
 local function EnsureBlur(settings)
@@ -1504,8 +1918,14 @@ local function AdvanceDrop(drop, step, wind, bounds)
 end
 
 local function DrawDrop(drop, lens, warp, rotation)
-    local pushX, pushY = LensOffset(drop.X - lens.X, drop.Y - lens.Y, warp)
-    drop.Frame.Position = UDim2.fromOffset(drop.X + pushX, drop.Y + pushY)
+    -- No lens, no displacement: a phone skips the whole warp rather than paying for it per drop.
+    local x, y = drop.X, drop.Y
+    if lens ~= nil then
+        local pushX, pushY = LensOffset(drop.X - lens.X, drop.Y - lens.Y, warp)
+        x, y = x + pushX, y + pushY
+    end
+
+    drop.Frame.Position = UDim2.fromOffset(x, y)
     if rotation == nil then return end
     drop.Frame.Rotation = rotation
 end
@@ -1543,12 +1963,18 @@ local function StepRain(deltaTime)
     -- The well trails the cursor rather than snapping to it, so the glass bends the rain a moment
     -- after the pointer arrives. The drops still fall on their own path - the warp only decides
     -- where each one is drawn - which is what lets a drop enter or leave the field without jumping.
-    local target = UserInput:GetMouseLocation() - layer.AbsolutePosition
-    App.lens     = (App.lens or target):Lerp(target, 1 - math.exp(-rain.Warp.Follow * step))
+    -- A touch screen has no cursor to bend the space with, so the well is skipped there and the
+    -- drops fall straight.
+    local lens = nil
+    if rain.Warp.Enabled then
+        local target = UserInput:GetMouseLocation() - layer.AbsolutePosition
+        App.lens     = (App.lens or target):Lerp(target, 1 - math.exp(-rain.Warp.Follow * step))
+        lens         = App.lens
+    end
 
     for _, drop in ipairs(App.streaks) do
         AdvanceDrop(drop, step, wind, bounds)
-        DrawDrop(drop, App.lens, rain.Warp, rotation)
+        DrawDrop(drop, lens, rain.Warp, rotation)
     end
 end
 
@@ -1677,16 +2103,102 @@ local function UnregisterSurface(surface)
     SyncEffects()
 end
 
+-- How tall a body is allowed to get before it scrolls: the screen, less the safe area, less the
+-- window's own chrome and one margin at each edge. `reserve` is the room the body does not get -
+-- the tab strip, on a window.
+local function BodyCapacity(reserve)
+    local screen = Viewport()
+    return math.max(screen.Y - TopInset() - (Theme.Mobile.Margin * 2) - Metrics.Bar - (reserve or 0) - (Theme.Space.Pad * 2), 120)
+end
+
+-- A body sits in a viewport. On a desktop that is a plain frame that grows with what is in it, so
+-- the plate is exactly as tall as its contents; on a phone it is a scrolling frame capped at what
+-- the screen can show, because a window taller than the phone is a window with controls that cannot
+-- be reached.
+--
+-- The height is measured from the content rather than guessed, so a short window stays short and
+-- only a long one scrolls. Only the frame that is on screen is measured: a tab waiting in the
+-- holder is zero-sized and would otherwise report nothing and collapse the window.
+local function CreateViewport(plate, order, reserve)
+    local touch = MonoUI.Touch
+
+    -- Built in two passes because the two frames differ in which properties exist at all: a plain
+    -- frame cannot carry a canvas size, and a scrolling frame must not also auto-size, or it would
+    -- grow to its contents and never scroll.
+    local properties = {
+        ClassName              = touch and "ScrollingFrame" or "Frame",
+        Parent                 = plate,
+        Name                   = "Viewport",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 0),
+        LayoutOrder            = order or 3,
+    }
+
+    if touch then
+        properties.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        properties.CanvasSize          = UDim2.new(0, 0, 0, 0)
+        properties.ScrollBarThickness  = 3
+        properties.ScrollingEnabled    = true
+        properties.ElasticBehavior     = Enum.ElasticBehavior.WhenScrollable
+    else
+        properties.AutomaticSize = Enum.AutomaticSize.Y
+    end
+
+    local frame = Element(properties)
+
+    local viewport = { Frame = frame, content = nil, connection = nil, Reserve = reserve or 0 }
+
+    function viewport:Resize()
+        if not touch or viewport.content == nil then return end
+
+        local capacity = BodyCapacity(viewport.Reserve)
+        local height   = math.min(viewport.content.AbsoluteSize.Y / SurfaceScale(plate), capacity)
+        frame.Size     = UDim2.new(1, 0, 0, math.max(height, 1))
+    end
+
+    function viewport:Show(content)
+        if viewport.connection ~= nil then
+            pcall(function()
+                viewport.connection:Disconnect()
+            end)
+            viewport.connection = nil
+        end
+
+        viewport.content = content
+        if content == nil then return end
+        content.Parent = frame
+        if not touch then return end
+
+        viewport.connection = content:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+            viewport:Resize()
+        end)
+        frame.CanvasPosition = Vector2.zero                                          -- a tab opened fresh starts at its top
+        viewport:Resize()
+    end
+
+    function viewport:Destroy()
+        if viewport.connection ~= nil then
+            pcall(function()
+                viewport.connection:Disconnect()
+            end)
+            viewport.connection = nil
+        end
+    end
+
+    return viewport
+end
+
 -- One plate: the window surface itself, with the title bar, the hint line and the drag.
 -- Everything else - the tab strip, the body, a second plate - hangs off it.
 local function CreatePlateFrame(settings, order)
+    local width = PlateWidth(settings.Width)
     local plate = Sticker(Element {
         ClassName     = "Frame",
         Parent        = EnsureGui(settings.GuiName),
         Name          = settings.Name or "Plate",
         AnchorPoint   = Vector2.new(0, 0),
-        Position      = settings.Position or UDim2.fromOffset(80, 120 + ((order or 1) - 1) * 24),
-        Size          = UDim2.fromOffset(settings.Width or Theme.Width, 0),
+        Position      = settings.Position or PlatePosition(width, order),
+        Size          = UDim2.fromOffset(width, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         ZIndex        = 1,
     }, {
@@ -1704,20 +2216,53 @@ local function CreatePlateFrame(settings, order)
     -- moves together and nothing inside it has to know that it was shown rather than placed.
     Element { ClassName = "UIScale", Parent = plate, Name = "Scale" }
 
+    -- The bar is measured from the metrics, and so is everything on it: the title sits above the
+    -- hint line, both placed off the bar's own middle, so a touch bar is taller without the two
+    -- lines drifting apart.
+    local middle = math.floor(Metrics.Bar / 2)
     local bar = Sticker(Element {
         ClassName   = "Frame",
         Parent      = plate,
         Name        = "Bar",
-        Size        = UDim2.new(1, 0, 0, 34),
+        Size        = UDim2.new(1, 0, 0, Metrics.Bar),
         LayoutOrder = 1,
     }, { Color = "Header", Alpha = Theme.PanelAlpha, Corner = "RowRadius", Stroke = "Line", Glass = true })
+
+    -- With no keyboard there is no Right Control, so a touch window carries the way out on itself:
+    -- a small button at the end of the title bar. It is what the chip brings the window back from.
+    local wantsHide = MonoUI.Touch or settings.HideButton == true
+    local hideWidth = wantsHide and (Metrics.Hide + 6) or 0
+    local hideButton = nil
+
+    if wantsHide then
+        hideButton = Sticker(Element {
+            ClassName       = "TextButton",
+            Parent          = bar,
+            Name            = "Hide",
+            AnchorPoint     = Vector2.new(1, 0.5),
+            Position        = UDim2.new(1, -8, 0.5, 0),
+            Size            = UDim2.fromOffset(Metrics.Hide, Metrics.Hide),
+            AutoButtonColor = false,
+            Text            = "",
+            ZIndex          = 3,
+        }, { Color = "Row", Alpha = Theme.RowAlpha, Corner = "RowRadius", Stroke = "Line" })
+
+        Texted(hideButton, {
+            Text   = "-",
+            Tint   = "Muted",
+            Size   = Theme.Type.Label,
+            X      = Enum.TextXAlignment.Center,
+            ZIndex = 4,
+        })
+        Hoverable(hideButton, RowLooks)
+    end
 
     Texted(bar, {
         Text     = string.upper(settings.Name or "PLATE"),
         Size     = Theme.Type.Label,
         Bold     = true,
-        Position = UDim2.fromOffset(12, 4),
-        Size2    = UDim2.new(1, -128, 0, 16),
+        Position = UDim2.fromOffset(12, middle - 13),
+        Size2    = UDim2.new(1, -(128 + hideWidth), 0, 16),
         ZIndex   = 2,
     })
 
@@ -1726,8 +2271,8 @@ local function CreatePlateFrame(settings, order)
         Tint     = "Muted",
         Size     = Theme.Type.Support,
         Bold     = false,
-        Position = UDim2.fromOffset(12, 20),
-        Size2    = UDim2.new(1, -128, 0, 11),
+        Position = UDim2.fromOffset(12, middle + 3),
+        Size2    = UDim2.new(1, -(128 + hideWidth), 0, 11),
         ZIndex   = 2,
     })
 
@@ -1737,8 +2282,8 @@ local function CreatePlateFrame(settings, order)
         Parent      = bar,
         Name        = "Status",
         AnchorPoint = Vector2.new(1, 0.5),
-        Position    = UDim2.new(1, -10, 0.5, 0),
-        Size        = UDim2.fromOffset(settings.PillWidth or 112, 22),
+        Position    = UDim2.new(1, -(10 + hideWidth), 0.5, 0),
+        Size        = UDim2.fromOffset(settings.PillWidth or (MonoUI.Touch and 96 or 112), 22),
         ZIndex      = 2,
     }, { Color = "Row", Alpha = Theme.RowAlpha, Corner = 0.5, Stroke = "Line" })
 
@@ -1760,35 +2305,40 @@ local function CreatePlateFrame(settings, order)
         ZIndex   = 3,
     })
 
-    return plate, bar, hint, { pill = pill, dot = dot, label = status }
+    return plate, bar, hint, { pill = pill, dot = dot, label = status }, hideButton
 end
 
 function MonoUI:CreatePlate(settings)
     settings = settings or {}
     Motion.Enabled = settings.Motion ~= false
 
-    local plate, bar, hint, status = CreatePlateFrame(settings, #App.plates + 1)
+    local plate, bar, hint, status, hideButton = CreatePlateFrame(settings, #App.plates + 1)
 
     local object = {
-        connections = {},
+        connections   = {},
         dragThreshold = settings.DragThreshold or 3,
-        plate = plate,
-        bar = bar,
-        status = status,
-        settings = settings,
-        visible = true,
+        plate         = plate,
+        bar           = bar,
+        status        = status,
+        settings      = settings,
+        visible       = true,
+        width         = plate.Size.X.Offset,                                         -- what FitSurface fits the window into
+        hideButton    = hideButton,
     }
     App.plates[#App.plates + 1] = object
+    PlateObjects[plate] = object
+
+    object.viewport = CreateViewport(plate, 2, 0)
 
     object.body = Element {
         ClassName     = "Frame",
-        Parent        = plate,
+        Parent        = nil,
         Name          = "Body",
         BackgroundTransparency = 1,
         Size          = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
-        LayoutOrder   = 2,
     }
+    object.viewport:Show(object.body)
 
     local region = CreateRegion(object.body)
     for key, value in pairs(region) do
@@ -1801,7 +2351,30 @@ function MonoUI:CreatePlate(settings)
     RegisterSurface(object, settings)
     Dragging(object, plate, bar)
 
-    hint.Text = settings.Hint or (settings.ToggleKey and (string.upper(tostring(settings.ToggleKey.Name)) .. " TO HIDE") or "")
+    if hideButton ~= nil then
+        hideButton.MouseButton1Click:Connect(function()
+            object:SetVisible(false)
+        end)
+    end
+
+    local hintText = settings.Hint
+    if hintText == nil and settings.ToggleKey ~= nil then
+        hintText = string.upper(tostring(settings.ToggleKey.Name)) .. " TO HIDE"
+    end
+    if hintText == nil and hideButton ~= nil then
+        hintText = "TAP - TO HIDE"
+    end
+    hint.Text = hintText or ""
+
+    FitSurface(plate, object.width)
+
+    function object:Refit()
+        FitSurface(plate, object.width)
+        ClampSurface(plate)
+        object.viewport:Resize()
+    end
+
+    WatchViewport(object)
 
     function object:SetStatus(text, tint)
         status.label.Text    = tostring(text or "")
@@ -1828,6 +2401,8 @@ function MonoUI:CreatePlate(settings)
             end)
         end
         table.clear(object.connections)
+        PlateObjects[plate] = nil
+        object.viewport:Destroy()
         UnregisterSurface(object)
         pcall(function()
             plate:Destroy()
@@ -1839,6 +2414,9 @@ end
 
 function MonoUI:CreateWindow(settings)
     settings = settings or {}
+    if settings.Mobile ~= nil then
+        MonoUI:SetTouch(settings.Mobile)                                             -- the switch is global: row heights are read while controls are built
+    end
     Settings.Enabled  = (settings.ConfigurationSaving or {}).Enabled == true
     Settings.FileName = (settings.ConfigurationSaving or {}).FileName or settings.Name or "MonoUI"
     Motion.Enabled    = settings.Motion ~= false
@@ -1856,30 +2434,38 @@ function MonoUI:CreateWindow(settings)
     }
     App.windows[#App.windows + 1] = window
 
-    local plate, bar, hint, status = CreatePlateFrame(settings, #App.windows)
+    local plate, bar, hint, status, hideButton = CreatePlateFrame(settings, #App.windows)
     window.plate = plate
     window.bar = bar
     window.status = status
+    window.hideButton = hideButton
+    window.width = plate.Size.X.Offset                                             -- what FitSurface fits the window into
+    PlateObjects[plate] = window
 
     local strip = Element {
         ClassName              = "Frame",
         Parent                 = nil,                                             -- only parented once a second tab exists
         Name                   = "Tabs",
         BackgroundTransparency = 1,
-        Size                   = UDim2.new(1, 0, 0, 28),
+        Size                   = UDim2.new(1, 0, 0, Metrics.Tab),
         LayoutOrder            = 2,
     }
     Element {
         ClassName             = "UIGridLayout",
         Parent                = strip,
         Name                  = "Columns",
-        CellSize              = UDim2.new(0, 132, 0, 28),
+        CellSize              = UDim2.new(0, 132, 0, Metrics.Tab),
         CellPadding           = UDim2.new(0, 6, 0, 0),
         FillDirection         = Enum.FillDirection.Horizontal,
         FillDirectionMaxCells = 6,
         SortOrder             = Enum.SortOrder.LayoutOrder,
     }
     window.strip = strip
+    window.grid  = strip:FindFirstChild("Columns")
+
+    -- The body of the window: whichever tab is in front, inside a frame that scrolls when the
+    -- screen is shorter than the tab is.
+    window.viewport = CreateViewport(plate, 3, Metrics.Tab)
 
     local holder = Element {
         ClassName = "Frame",
@@ -1892,11 +2478,13 @@ function MonoUI:CreateWindow(settings)
     window.holder = holder
 
     -- the pill that stays on screen while the window is hidden
+    local chipSize = MonoUI.Touch and UDim2.fromOffset(168, 40) or UDim2.fromOffset(132, 26)
     local chip = Sticker(Element {
         ClassName       = "TextButton",
         Parent          = App.gui,
         Name            = "Chip",
-        Size            = UDim2.fromOffset(132, 26),
+        Position        = MonoUI.Touch and UDim2.fromOffset(Theme.Mobile.Margin, TopInset() + Theme.Mobile.Margin) or nil,
+        Size            = chipSize,
         AutoButtonColor = false,
         Text            = "",
         Visible         = false,
@@ -1918,6 +2506,16 @@ function MonoUI:CreateWindow(settings)
             window:SetVisible(true)
         end
     end)
+
+    FitSurface(plate, window.width)
+
+    function window:Refit()
+        FitSurface(plate, window.width)
+        ClampSurface(plate)
+        window.viewport:Resize()
+    end
+
+    WatchViewport(window)
 
     function window:SetStatus(text, tint)
         status.label.Text = tostring(text or "")
@@ -1983,9 +2581,13 @@ function MonoUI:CreateWindow(settings)
 
         local function Focus()
             window.active = tab
-            for index, other in ipairs(window.tabs) do
+            for _, other in ipairs(window.tabs) do
                 local active = other == tab
-                other.content.Parent = active and plate or holder
+                if active then
+                    window.viewport:Show(other.content)
+                else
+                    other.content.Parent = holder
+                end
                 other.content.LayoutOrder = 3
                 other.button.BackgroundColor3 = Theme[active and "Text" or "Row"]
                 other.button.BackgroundTransparency = active and Theme.SwitchOnAlpha or Theme.RowAlpha
@@ -1995,6 +2597,7 @@ function MonoUI:CreateWindow(settings)
 
         tab.button.MouseButton1Click:Connect(Focus)
         window.tabs[#window.tabs + 1] = tab
+        ArrangeTabs(window)
 
         -- a single tab needs no strip; with two or more it comes back into the plate, and in
         -- between it waits inside the holder so Destroy still reaches it
@@ -2011,6 +2614,7 @@ function MonoUI:CreateWindow(settings)
             end)
         end
         table.clear(window.connections)
+        PlateObjects[plate] = nil
 
         Motion.Destroy()
 
@@ -2022,11 +2626,13 @@ function MonoUI:CreateWindow(settings)
         local gui  = App.gui
         local blur = App.blur
 
+        window.viewport:Destroy()
         UnregisterSurface(window)
         StopRain()
         table.clear(surfaceWants)
 
         App.gui      = nil
+        App.overlay  = nil
         App.blur     = nil
         App.rain     = nil
         App.streaks  = {}
@@ -2051,16 +2657,38 @@ function MonoUI:CreateWindow(settings)
         end
     end
 
-    -- the hide key, and the hint that names it
-    local key = settings.ToggleKey or Enum.KeyCode.RightControl
+    if hideButton ~= nil then
+        hideButton.MouseButton1Click:Connect(function()
+            window:SetVisible(false)
+        end)
+    end
+
+    -- The hide key, and the hint that names it. A phone has no Right Control, so a touch window
+    -- gets no default key - only one the caller asked for, or one that exists on a keyboard that
+    -- happens to be attached - and the hint names the button instead.
+    local key = settings.ToggleKey
+    if key == nil and (not MonoUI.Touch or Platform.Keyboard) then
+        key = Enum.KeyCode.RightControl
+    end
     window.settings.ToggleKey = key
-    hint.Text = settings.Hint or (key and (string.upper(tostring(key.Name)) .. " TO HIDE") or "NO TOGGLE KEY")
-    window.connections[#window.connections + 1] = UserInput.InputBegan:Connect(function(input, processed)
-        if processed then return end
-        if input.KeyCode == key then
-            window:Toggle()
-        end
-    end)
+
+    local hintText = settings.Hint
+    if hintText == nil and key ~= nil then
+        hintText = string.upper(tostring(key.Name)) .. " TO HIDE"
+    end
+    if hintText == nil and hideButton ~= nil then
+        hintText = "TAP - TO HIDE"
+    end
+    hint.Text = hintText or "NO TOGGLE KEY"
+
+    if key ~= nil then
+        window.connections[#window.connections + 1] = UserInput.InputBegan:Connect(function(input, processed)
+            if processed then return end
+            if input.KeyCode == key then
+                window:Toggle()
+            end
+        end)
+    end
 
     window:SetVisible(window.visible)
     window:SetStatus("READY")
@@ -2073,6 +2701,8 @@ end
 
 -- Everything a script needs to lay itself out the way Stretcher does.
 MonoUI.Theme     = Theme
+MonoUI.Metrics   = Metrics
+MonoUI.Platform  = Platform
 MonoUI.Motion    = Motion
 MonoUI.Element   = Element
 MonoUI.Sticker   = Sticker

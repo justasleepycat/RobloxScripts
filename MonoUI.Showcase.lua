@@ -12,6 +12,12 @@
 -- tells you to do them rather than faking them: hover the rows, press them, and tab through the page. The
 -- states that are properties - ready, idle, busy, warning, error, disabled - are all posed, from the
 -- States tab.
+--
+-- On a phone there is no hover and no tab key, and the library lays itself out for touch on its own: the
+-- rows are a fingertip tall, the body scrolls, the dropdowns open upward near the bottom edge, and the
+-- title bar carries the hide button in place of Right Control. Run it on a phone to see that layout, or
+-- force it on a desktop with MonoUI:SetTouch(true) before this file - and check the window comes back
+-- from its chip, since that is the only way back when the hide button is the only way out.
 
 local MonoUI = ... or MonoUI                                                        -- handed in, or left as a global
 assert(MonoUI ~= nil and type(MonoUI.CreateWindow) == "function", "load MonoUI before the showcase")
