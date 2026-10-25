@@ -1,4 +1,4 @@
--- Latest update: 10/25/2026 5:25 PM
+-- Latest update: 10/25/2026 5:29 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -74,7 +74,7 @@ local Theme = {
     Invert       = Color3.fromRGB(10, 10, 10),                                       -- text on a white pill
     Car          = Color3.fromRGB(70, 70, 70),                                       -- tint for a player who is sitting in a car
     CarHover     = Color3.fromRGB(96, 96, 96),                                       -- and its hover
-    WindowTransparency  = 0.00,                                                             -- frosted plate, the blur shows through
+    WindowTransparency  = 0.40,                                                             -- frosted plate, the blur shows through
     PanelAlpha   = 0.90,                                                             -- title bar, white lift
     RowAlpha     = 0.92,                                                             -- buttons, rest
     HoverAlpha   = 0.84,                                                             -- buttons, hovered: denser fill, same tint
