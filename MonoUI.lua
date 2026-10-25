@@ -1,4 +1,4 @@
--- Latest update: 10/25/2026 5:14 PM
+-- Latest update: 10/25/2026 5:25 PM
 --[[ MonoUI ====================================================================
     The monochrome window from Stretcher.lua, extracted into a reusable library.
 
@@ -74,7 +74,7 @@ local Theme = {
     Invert       = Color3.fromRGB(10, 10, 10),                                       -- text on a white pill
     Car          = Color3.fromRGB(70, 70, 70),                                       -- tint for a player who is sitting in a car
     CarHover     = Color3.fromRGB(96, 96, 96),                                       -- and its hover
-    WindowAlpha  = 0.72,                                                             -- frosted plate, the blur shows through
+    WindowTransparency  = 0.00,                                                             -- frosted plate, the blur shows through
     PanelAlpha   = 0.90,                                                             -- title bar, white lift
     RowAlpha     = 0.92,                                                             -- buttons, rest
     HoverAlpha   = 0.84,                                                             -- buttons, hovered: denser fill, same tint
@@ -2209,7 +2209,7 @@ local function CreatePlateFrame(settings, order)
         ZIndex        = 1,
     }, {
         Color   = "Surface",
-        Alpha   = Theme.WindowAlpha,
+        Alpha   = Theme.WindowTransparency,
         Corner  = "Radius",
         Stroke  = "Outline",
         Rim     = true,
@@ -2495,7 +2495,7 @@ function MonoUI:CreateWindow(settings)
         Text            = "",
         Visible         = false,
         ZIndex          = 5,
-    }, { Color = "Surface", Alpha = Theme.WindowAlpha, Corner = "RowRadius", Stroke = "Outline", Rim = true, Glass = true })
+    }, { Color = "Surface", Alpha = Theme.WindowTransparency, Corner = "RowRadius", Stroke = "Outline", Rim = true, Glass = true })
 
     Texted(chip, {
         Text   = string.upper(name),
@@ -3506,7 +3506,7 @@ function MonoUI:CreatePlayerList(settings)
             Parent                 = gui,
             Name                   = "PlayerListFrame",
             BackgroundColor3       = Theme.Surface,
-            BackgroundTransparency = Theme.WindowAlpha,
+            BackgroundTransparency = Theme.WindowTransparency,
             BorderSizePixel        = 0,
             AnchorPoint            = Vector2.new(1, 0),
             Position               = settings.Position or UDim2.new(1, -20, 0, 20),
@@ -3515,7 +3515,7 @@ function MonoUI:CreatePlayerList(settings)
         }
         Sticker(frame, {
             Color = "Surface",
-            Alpha = Theme.WindowAlpha,
+            Alpha = Theme.WindowTransparency,
             Corner = "Radius",
             Stroke = "Outline",
             Rim = true,
@@ -3803,7 +3803,7 @@ function MonoUI:CreatePlayerInfo(settings)
             Parent                 = gui,
             Name                   = "PlayerInfoFrame",
             BackgroundColor3       = Theme.Surface,
-            BackgroundTransparency = Theme.WindowAlpha,
+            BackgroundTransparency = Theme.WindowTransparency,
             BorderSizePixel        = 0,
             Size                   = UDim2.fromOffset(width, height),
             Visible                = false,
@@ -3811,7 +3811,7 @@ function MonoUI:CreatePlayerInfo(settings)
         }
         Sticker(frame, {
             Color = "Surface",
-            Alpha = Theme.WindowAlpha,
+            Alpha = Theme.WindowTransparency,
             Corner = "Radius",
             Stroke = "Outline",
             Rim = true,
@@ -3859,13 +3859,13 @@ function MonoUI:CreatePlayerInfo(settings)
 
         local dialog = Element {
             ClassName = "Frame", Parent = frame, Name = "TeleportDialog",
-            BackgroundColor3 = Theme.Surface, BackgroundTransparency = Theme.WindowAlpha, BorderSizePixel = 0,
+            BackgroundColor3 = Theme.Surface, BackgroundTransparency = Theme.WindowTransparency, BorderSizePixel = 0,
             Position = UDim2.fromOffset(180, 140), Size = UDim2.fromOffset(300, 126),
             Visible = false, ZIndex = 50,
         }
         Sticker(dialog, {
             Color = "Surface",
-            Alpha = Theme.WindowAlpha,
+            Alpha = Theme.WindowTransparency,
             Corner = "Radius",
             Stroke = "Outline",
             Rim = true,
@@ -4131,6 +4131,6 @@ function MonoUI:HideSurface(frame)
     return frame
 end
 
-MonoUI.GlassVersion = "2026-10-25-glass-2"
+MonoUI.GlassVersion = "2026-10-25-glass-6"
 
 return MonoUI
