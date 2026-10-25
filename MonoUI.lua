@@ -74,7 +74,7 @@ local Theme = {
     Invert       = Color3.fromRGB(10, 10, 10),                                       -- text on a white pill
     Car          = Color3.fromRGB(70, 70, 70),                                       -- tint for a player who is sitting in a car
     CarHover     = Color3.fromRGB(96, 96, 96),                                       -- and its hover
-    WindowAlpha  = 0.38,                                                             -- frosted plate, the blur shows through
+    WindowAlpha  = 0.72,                                                             -- frosted plate, the blur shows through
     PanelAlpha   = 0.90,                                                             -- title bar, white lift
     RowAlpha     = 0.92,                                                             -- buttons, rest
     HoverAlpha   = 0.84,                                                             -- buttons, hovered: denser fill, same tint
@@ -3236,14 +3236,16 @@ function MonoUI:CreatePlayerList(settings)
         list.CollapseButton.Text = list.Collapsed and "›" or "⌄"
         list.ViewButton.Text = list.Grid and "GRID" or "LIST"
         list.SortButton.Text = string.format("SORT %s %s", string.upper(list.Sort), list.Ascending and "↑" or "↓")
-        list.SpeedButton.BackgroundColor3 = list.ShowSpeed and Color3.fromRGB(35, 95, 65) or Theme.Row
-        list.RankButton.BackgroundColor3 = list.ShowRank and Color3.fromRGB(35, 95, 65) or Theme.Row
-        list.DistanceButton.BackgroundColor3 = list.ShowDistance and Color3.fromRGB(35, 95, 65) or Theme.Row
-        list.SpeedButton.TextColor3 = list.ShowSpeed and Theme.Text or Theme.Invert
-        list.RankButton.TextColor3 = list.ShowRank and Theme.Text or Theme.Invert
-        list.DistanceButton.TextColor3 = list.ShowDistance and Theme.Text or Theme.Invert
+        local function StyleToggle(button, active)
+            button.BackgroundColor3 = active and Theme.Text or Theme.Row
+            button.BackgroundTransparency = active and Theme.SwitchOnAlpha or Theme.RowAlpha
+            button.TextColor3 = active and Theme.Invert or Theme.Text
+        end
+        StyleToggle(list.SpeedButton, list.ShowSpeed)
+        StyleToggle(list.RankButton, list.ShowRank)
+        StyleToggle(list.DistanceButton, list.ShowDistance)
         list.CaseButton.Text = list.CaseSensitive and "CASE: ON" or "CASE: OFF"
-        list.CaseButton.TextColor3 = list.CaseSensitive and Color3.fromRGB(35, 255, 120) or muted
+        list.CaseButton.TextColor3 = list.CaseSensitive and Theme.Text or muted
 
         local mode = list.Grid and "Grid" or "List"
         if list.RowMode ~= mode then
@@ -3465,7 +3467,7 @@ function MonoUI:CreatePlayerList(settings)
             row.Frame.Visible = true
             row.Frame.LayoutOrder = index
             row.Name.Text = tostring(rowData.Name or "")
-            row.Name.TextColor3 = relationColors[relation] or Theme.Text
+            row.Name.TextColor3 = Theme.Text
             row.Rank.Text = tostring(rowData.Rank or "Unranked")
             row.Rank.Visible = list.ShowRank
             row.Distance.Text = type(rowData.Distance) == "number"
@@ -3474,11 +3476,16 @@ function MonoUI:CreatePlayerList(settings)
             row.Distance.Visible = list.ShowDistance
             row.Speed.Text = type(rowData.Speed) == "number" and string.format("%.0f mph", rowData.Speed) or "N/A"
             row.Speed.Visible = list.ShowSpeed
-            row.GPS.TextColor3 = rowData.Gps and Color3.fromRGB(35, 255, 120) or Color3.fromRGB(255, 80, 80)
+            row.GPS.TextColor3 = rowData.Gps and Theme.Text or muted
             row.State.Text = tostring(rowData.State or "Unknown")
-            row.State.TextColor3 = rowData.StateColor or muted
-            row.Friend.BackgroundColor3 = relation == "Friend" and Color3.fromRGB(50, 150, 85) or Theme.Row
-            row.Enemy.BackgroundColor3 = relation == "Enemy" and Color3.fromRGB(170, 55, 55) or Theme.Row
+            row.State.TextColor3 = rowData.State == "Unknown" and muted or Theme.Text
+            local function StyleRelation(button, active)
+                button.BackgroundColor3 = active and Theme.Text or Theme.Row
+                button.BackgroundTransparency = active and Theme.SwitchOnAlpha or Theme.RowAlpha
+                button.TextColor3 = active and Theme.Invert or Theme.Text
+            end
+            StyleRelation(row.Friend, relation == "Friend")
+            StyleRelation(row.Enemy, relation == "Enemy")
         end
     end
 
@@ -3764,10 +3771,6 @@ function MonoUI:CreatePlayerInfo(settings)
                 action.Callback
             )
 
-            if action.Danger then
-                button.TextColor3 = settings.Danger or Color3.fromRGB(255, 95, 95)
-            end
-
             table.insert(info.ActionButtons, button)
         end
     end
@@ -3980,10 +3983,13 @@ function MonoUI:CreatePlayerInfo(settings)
         self.Title.Text = profile.Title or ""
         self.InfoText.Text = profile.Text or ""
         local relation = profile.Relation or "Neutral"
-        self.RelationButtons.Friend.BackgroundColor3 = relation == "Friend" and Color3.fromRGB(50, 150, 85) or Theme.Row
-        self.RelationButtons.Enemy.BackgroundColor3 = relation == "Enemy" and Color3.fromRGB(170, 55, 55) or Theme.Row
-        self.RelationButtons.Friend.TextColor3 = relation == "Friend" and Theme.Text or Theme.Invert
-        self.RelationButtons.Enemy.TextColor3 = relation == "Enemy" and Theme.Text or Theme.Invert
+        local function StyleRelationButton(button, active)
+            button.BackgroundColor3 = active and Theme.Text or Theme.Row
+            button.BackgroundTransparency = active and Theme.SwitchOnAlpha or Theme.RowAlpha
+            button.TextColor3 = active and Theme.Invert or Theme.Text
+        end
+        StyleRelationButton(self.RelationButtons.Friend, relation == "Friend")
+        StyleRelationButton(self.RelationButtons.Enemy, relation == "Enemy")
 
         local actionSignature = ActionSignature(profile.PlayerActions) .. "|" .. ActionSignature(profile.VehicleActions)
         if self.ActionKey ~= actionSignature then
@@ -3997,7 +4003,6 @@ function MonoUI:CreatePlayerInfo(settings)
                     self.Frame, "VehicleAction" .. index, action.Text or "ACTION",
                     UDim2.fromOffset(212 + column * 115, 196 + row * 25), UDim2.fromOffset(109, 22), action.Callback
                 )
-                if action.Danger then button.TextColor3 = settings.Danger or Color3.fromRGB(255, 95, 95) end
                 table.insert(vehicleButtons, button)
             end
             for _, old in ipairs(self.VehicleActionButtons or {}) do old:Destroy() end
@@ -4322,5 +4327,7 @@ function MonoUI:HideSurface(frame)
     UnregisterSurface(frame)
     return frame
 end
+
+MonoUI.GlassVersion = "2026-10-25-glass"
 
 return MonoUI
