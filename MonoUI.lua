@@ -2610,6 +2610,9 @@ function MonoUI:CreateWindow(settings)
         strip.Parent = #window.tabs > 1 and plate or holder
         Focus()
 
+        -- A caller that creates several tabs may want the first one to stay in front; without
+        -- this, the last tab created would be the one left showing.
+        tab.Focus = Focus
         return tab
     end
 
@@ -2688,12 +2691,22 @@ function MonoUI:CreateWindow(settings)
     hint.Text = hintText or "NO TOGGLE KEY"
 
     if key ~= nil then
-        window.connections[#window.connections + 1] = UserInput.InputBegan:Connect(function(input, processed)
+        local connection
+        connection = UserInput.InputBegan:Connect(function(input, processed)
             if processed then return end
+            -- A window whose gui was destroyed from under it (a reload that skipped Destroy) must
+            -- let go of the key instead of toggling a dead plate and its backdrop blur.
+            if window.plate == nil or window.plate.Parent == nil then
+                pcall(function()
+                    connection:Disconnect()
+                end)
+                return
+            end
             if input.KeyCode == key then
                 window:Toggle()
             end
         end)
+        window.connections[#window.connections + 1] = connection
     end
 
     window:SetVisible(window.visible)
@@ -3300,14 +3313,23 @@ function MonoUI:CreatePlayerList(settings)
         end
 
         local actions = {}
+        local actionTotal = 0
+        for _, action in ipairs(rowActions) do
+            actionTotal += (action.Width or 22) + 4
+        end
+
+        local actionX = -actionTotal
         for index, action in ipairs(rowActions) do
+            local actionWidth = action.Width or 22
             local button = Button(
                 frame, "Action_" .. (action.Id or index), ActionLabel(action, rowData),
-                UDim2.new(1, -22 - (#rowActions - index) * 22, 0, 5),
-                UDim2.fromOffset(18, 20), function()
+                UDim2.new(1, actionX, 0, 5),
+                UDim2.fromOffset(actionWidth, 20), function()
                     if action.OnClick then action.OnClick(rowData) end
                 end
             )
+            button.TextSize = action.TextSize or 8
+            actionX += actionWidth + 4
             actions[index] = button
         end
 
@@ -3336,8 +3358,18 @@ function MonoUI:CreatePlayerList(settings)
             x += columnWidth
         end
 
+        local actionTotal = 0
+        for _, action in ipairs(rowActions) do
+            actionTotal += (action.Width or 22) + 4
+        end
+
+        local actionX = -actionTotal
         for index, button in ipairs(row.Actions) do
-            button.Position = UDim2.new(1, -22 - (#row.Actions - index) * 22, 0, grid and 6 or 5)
+            local action = rowActions[index]
+            local actionWidth = action and action.Width or 22
+            button.Position = UDim2.new(1, actionX, 0, grid and 6 or 5)
+            button.Size = UDim2.fromOffset(actionWidth, 20)
+            actionX += actionWidth + 4
         end
 
         row.Frame.Size = grid and UDim2.fromOffset(gridWidth, gridHeight) or UDim2.new(1, -4, 0, rowHeight)
@@ -3454,7 +3486,7 @@ function MonoUI:CreatePlayerList(settings)
             ClassName = "Frame", Parent = gui, Name = "PlayerListFrame",
             BackgroundColor3 = Theme.Surface, BackgroundTransparency = Theme.WindowTransparency,
             BorderSizePixel = 0,
-            AnchorPoint = embedded and Vector2.new(0, 0) or Vector2.new(1, 0),
+            AnchorPoint = embedded and Vector2.new(0, 0) or (settings.AnchorPoint or Vector2.new(1, 0)),
             Position = embedded and UDim2.fromOffset(0, 0) or settings.Position or UDim2.new(1, -20, 0, 20),
             Size = UDim2.fromOffset(width, height), ZIndex = 5,
         }
@@ -3541,6 +3573,58 @@ function MonoUI:CreatePlayerList(settings)
             AutomaticCanvasSize = Enum.AutomaticSize.Y, ZIndex = 6,
         }
         list.Body = body
+
+        if settings.Draggable then
+            local dragBar = Element {
+                ClassName = "TextButton", Parent = frame, Name = "DragBar",
+                BackgroundTransparency = 1, AutoButtonColor = false, Text = "",
+                Size = UDim2.new(1, 0, 0, 30), ZIndex = 5,
+            }
+            local dragOffset = Vector2.zero
+            local connections = {}
+
+            dragBar.InputBegan:Connect(function(inputObject)
+                if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1
+                    and inputObject.UserInputType ~= Enum.UserInputType.Touch then
+                    return
+                end
+
+                -- AbsolutePosition is relative to the inset-clipped GUI space, while the
+                -- mouse is in screen space. Add the inset back or the frame jumps by it.
+                local inset = GuiService:GetGuiInset()
+                local absolute = frame.AbsolutePosition + Vector2.new(0, inset.Y)
+                frame.AnchorPoint = Vector2.new(0, 0)
+                frame.Position = UDim2.fromOffset(absolute.X, absolute.Y)
+                dragOffset = UserInput:GetMouseLocation() - absolute
+                list.Dragging = true
+            end)
+
+            connections[#connections + 1] = UserInput.InputChanged:Connect(function(inputObject)
+                if not list.Dragging then
+                    return
+                end
+                if inputObject.UserInputType ~= Enum.UserInputType.MouseMovement
+                    and inputObject.UserInputType ~= Enum.UserInputType.Touch then
+                    return
+                end
+
+                local mouse = UserInput:GetMouseLocation()
+                frame.Position = UDim2.fromOffset(
+                    math.floor(mouse.X - dragOffset.X),
+                    math.floor(mouse.Y - dragOffset.Y)
+                )
+            end)
+
+            connections[#connections + 1] = UserInput.InputEnded:Connect(function(inputObject)
+                if inputObject.UserInputType == Enum.UserInputType.MouseButton1
+                    or inputObject.UserInputType == Enum.UserInputType.Touch then
+                    list.Dragging = false
+                end
+            end)
+
+            list.DragConnections = connections
+        end
+
         UpdateLayout()
     end
 
@@ -3556,6 +3640,12 @@ function MonoUI:CreatePlayerList(settings)
     end
 
     function list:Destroy()
+        for _, connection in ipairs(list.DragConnections or {}) do
+            pcall(function()
+                connection:Disconnect()
+            end)
+        end
+        list.DragConnections = nil
         if list.Gui then list.Gui:Destroy() end
         list.Gui = nil
         list.Frame = nil
