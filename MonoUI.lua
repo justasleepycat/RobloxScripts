@@ -925,9 +925,22 @@ end
 
 --=== layout ================================================================
 
+-- A caller can move the whole UI into another container. CoreGui-backed gethui is
+-- only writable from the executor's loading thread on some builds, so a dialog built
+-- from a click callback fails there; PlayerGui is writable from the game threads.
+local UiContainerOverride = nil
+
+function MonoUI:SetUiContainer(container)
+    UiContainerOverride = container
+    return UiContainerOverride
+end
+
 -- UI belongs in the hidden UI container, not the player's PlayerGui
 -- gethui first, then the older fallbacks.
 local function UiContainer()
+    if UiContainerOverride ~= nil then
+        return UiContainerOverride
+    end
     if type(gethui) == "function" then
         local ok, hidden = pcall(gethui)
         if ok and hidden ~= nil then
