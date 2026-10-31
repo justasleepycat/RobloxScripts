@@ -1791,6 +1791,620 @@ function PlaceMenu(menu, row)
     )
 end
 
+--=== dialogs, help and colour ==============================================
+
+-- A modal surface shared by the colour picker, the help cards and script-owned dialogs. The
+-- backdrop is a full-screen button marked Modal, so the game underneath cannot take the click that
+-- belongs to the panel. The panel sits below the overlay menus (ZIndex 45 against 50) so a
+-- dropdown opened inside a dialog still draws above it.
+local OpenDialogs = {}
+
+function MonoUI.Dialog(properties)
+    properties = properties or {}
+    EnsureGui("MonoUI")
+
+    local screen = Viewport()
+    local width  = math.clamp(properties.Width or 360, 260, math.max(260, screen.X - 32))
+    local height = math.clamp(properties.Height or 360, 180, math.max(180, screen.Y - 48))
+
+    local backdrop = Element {
+        ClassName             = "TextButton",
+        Parent                = App.gui,
+        Name                  = "MonoUIDialogBackdrop",
+        BackgroundTransparency = 1,
+        AutoButtonColor       = false,
+        Text                  = "",
+        Size                  = UDim2.fromScale(1, 1),
+        Modal                 = true,
+        Selectable            = false,
+        ZIndex                = 44,
+    }
+
+    local panel = Sticker(Element {
+        ClassName             = "Frame",
+        Parent                = App.gui,
+        Name                  = properties.Name or "MonoUIDialog",
+        BackgroundTransparency = 0.03,
+        BorderSizePixel       = 0,
+        AnchorPoint           = Vector2.new(0.5, 0.5),
+        Position              = UDim2.fromScale(0.5, 0.5),
+        Size                  = UDim2.fromOffset(width, height),
+        ZIndex                = 45,
+    }, { Color = "Surface", Alpha = 0.03, Corner = "Radius", Stroke = "Outline", Rim = true, Glass = true })
+
+    Texted(panel, {
+        Text     = string.upper(properties.Title or "DIALOG"),
+        Size     = Theme.Type.Title,
+        Tint     = "Text",
+        Position = UDim2.fromOffset(16, 11),
+        Size2    = UDim2.new(1, -58, 0, 22),
+        ZIndex   = 46,
+    })
+
+    local close = Element {
+        ClassName             = "TextButton",
+        Parent                = panel,
+        Name                  = "Close",
+        BackgroundTransparency = 1,
+        BorderSizePixel       = 0,
+        AutoButtonColor       = false,
+        Font                  = Enum.Font.GothamBold,
+        Text                  = "X",
+        TextColor3            = Theme.Muted,
+        TextSize              = 12,
+        Position              = UDim2.new(1, -31, 0, 10),
+        Size                  = UDim2.fromOffset(22, 22),
+        ZIndex                = 47,
+    }
+
+    local content = Element {
+        ClassName             = "ScrollingFrame",
+        Parent                = panel,
+        Name                  = "Content",
+        BackgroundTransparency = 1,
+        BorderSizePixel       = 0,
+        ScrollBarThickness    = 4,
+        CanvasSize            = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize   = Enum.AutomaticSize.Y,
+        Size                  = UDim2.new(1, -32, 1, -62),
+        Position              = UDim2.fromOffset(16, 44),
+        ZIndex                = 46,
+    }
+    Element {
+        ClassName = "UIListLayout",
+        Parent    = content,
+        Name      = "Layout",
+        Padding   = UDim.new(0, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        HorizontalAlignment = Enum.HorizontalAlignment.Left,
+    }
+
+    local dialog = {
+        Frame    = panel,
+        Content  = content,
+        Backdrop = backdrop,
+        Closed   = false,
+    }
+
+    function dialog:Close()
+        if dialog.Closed then
+            return false
+        end
+        dialog.Closed = true
+        pcall(function()
+            if panel.Parent ~= nil then
+                panel:Destroy()
+            end
+        end)
+        pcall(function()
+            if backdrop.Parent ~= nil then
+                backdrop:Destroy()
+            end
+        end)
+        for index = #OpenDialogs, 1, -1 do
+            if OpenDialogs[index] == dialog then
+                table.remove(OpenDialogs, index)
+            end
+        end
+        if type(properties.OnClose) == "function" then
+            pcall(properties.OnClose, dialog)
+        end
+        return true
+    end
+
+    backdrop.MouseButton1Click:Connect(function()
+        dialog:Close()
+    end)
+    close.MouseButton1Click:Connect(function()
+        dialog:Close()
+    end)
+
+    OpenDialogs[#OpenDialogs + 1] = dialog
+    return dialog
+end
+
+function MonoUI:CloseDialogs()
+    for index = #OpenDialogs, 1, -1 do
+        local dialog = OpenDialogs[index]
+        if dialog ~= nil then
+            pcall(function()
+                dialog:Close()
+            end)
+        end
+    end
+    return true
+end
+
+-- A small question-mark button. Its explanation is a modal card rather than a hover tooltip: the
+-- text is long enough to need wrapping, and a card is not clipped by the scrolling body it sits in.
+local function Help(properties)
+    properties = properties or {}
+
+    local button = Sticker(Element {
+        ClassName             = "TextButton",
+        Parent                = properties.Parent,
+        Name                  = properties.Name or "Help",
+        Size                  = properties.Size or UDim2.fromOffset(16, 16),
+        Position              = properties.Position or UDim2.fromOffset(0, 0),
+        BackgroundColor3      = Theme.Well,
+        BackgroundTransparency = Theme.WellAlpha,
+        AutoButtonColor       = false,
+        Text                  = "?",
+        Font                  = Enum.Font.GothamBold,
+        TextSize              = 11,
+        TextColor3            = Theme.Text,
+        LayoutOrder           = properties.Order,
+        ZIndex                = properties.ZIndex or 4,
+    }, { Corner = 0.5, Stroke = "Line" })
+
+    local dialog = nil
+    button.MouseButton1Click:Connect(function()
+        if dialog ~= nil then
+            dialog:Close()
+            dialog = nil
+            return
+        end
+        dialog = MonoUI.Dialog {
+            Title  = properties.Title or "HELP",
+            Width  = properties.Width or 420,
+            Height = properties.Height or 320,
+            OnClose = function()
+                dialog = nil
+            end,
+        }
+        local label = Texted(dialog.Content, {
+            Text     = properties.Text or "",
+            Size     = Theme.Type.Body,
+            Tint     = "Text",
+            Bold     = false,
+            Size2    = UDim2.new(1, -8, 0, 0),
+            ZIndex   = 47,
+        })
+        label.TextWrapped   = true
+        label.TextTruncate  = Enum.TextTruncate.None
+        label.TextYAlignment = Enum.TextYAlignment.Top
+        label.AutomaticSize = Enum.AutomaticSize.Y
+    end)
+
+    pcall(function()
+        button.Destroying:Connect(function()
+            if dialog ~= nil then
+                dialog:Close()
+                dialog = nil
+            end
+        end)
+    end)
+
+    return { Frame = button }
+end
+
+local function HexFromColor(color)
+    local function channel(value)
+        return math.clamp(math.floor(value * 255 + 0.5), 0, 255)
+    end
+    return string.format("#%02X%02X%02X", channel(color.R), channel(color.G), channel(color.B))
+end
+
+local function ColorFromHex(text)
+    local hex = string.gsub(tostring(text or ""), "%s", "")
+    hex = string.gsub(hex, "^#", "")
+    if #hex == 3 then
+        hex = string.sub(hex, 1, 1):rep(2) .. string.sub(hex, 2, 2):rep(2) .. string.sub(hex, 3, 3):rep(2)
+    end
+    if #hex ~= 6 or not string.match(hex, "^%x%x%x%x%x%x$") then
+        return nil
+    end
+    return Color3.fromRGB(
+        tonumber(string.sub(hex, 1, 2), 16),
+        tonumber(string.sub(hex, 3, 4), 16),
+        tonumber(string.sub(hex, 5, 6), 16)
+    )
+end
+
+-- A swatch that opens a full colour editor: a saturation/value square, a hue bar, hex and RGB
+-- fields, a preview and Apply/Cancel. The caller keeps its own hex field if it wants one.
+local function ColorPicker(properties)
+    properties = properties or {}
+    local state = properties.Value
+    if typeof(state) ~= "Color3" then
+        state = Color3.new(1, 1, 1)
+    end
+
+    local button = Sticker(Element {
+        ClassName             = "TextButton",
+        Parent                = properties.Parent,
+        Name                  = properties.Name or "Color",
+        Size                  = properties.Size or UDim2.fromOffset(24, 24),
+        Position              = properties.Position or UDim2.fromOffset(0, 0),
+        BackgroundColor3      = state,
+        AutoButtonColor       = false,
+        Text                  = "",
+        LayoutOrder           = properties.Order,
+        ZIndex                = properties.ZIndex or 3,
+    }, { Corner = "RowRadius", Stroke = "Line" })
+
+    local dialog = nil
+    local updateView = nil
+
+    local function CloseDialog()
+        if dialog ~= nil then
+            dialog:Close()
+            dialog = nil
+        end
+    end
+
+    local function OpenDialog()
+        CloseDialog()
+
+        local hue, saturation, value = Color3.toHSV(state)
+        dialog = MonoUI.Dialog {
+            Title  = properties.Title or "COLOR",
+            Width  = 320,
+            Height = 454,
+            OnClose = function()
+                dialog = nil
+                updateView = nil
+            end,
+        }
+        local content = dialog.Content
+
+        local sv = Element {
+            ClassName             = "TextButton",
+            Parent                = content,
+            Name                  = "SaturationValue",
+            BackgroundColor3      = Color3.fromHSV(hue, 1, 1),
+            AutoButtonColor       = false,
+            Text                  = "",
+            Size                  = UDim2.new(1, -8, 0, 140),
+            LayoutOrder           = 1,
+            ZIndex                = 46,
+        }
+        Element { ClassName = "UICorner", Parent = sv, CornerRadius = UDim.new(0, Theme.RowRadius) }
+
+        local white = Element {
+            ClassName             = "Frame",
+            Parent                = sv,
+            Size                  = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3      = Color3.new(1, 1, 1),
+            BorderSizePixel       = 0,
+            Active                = false,
+            ZIndex                = 47,
+        }
+        Element {
+            ClassName    = "UIGradient",
+            Parent       = white,
+            Rotation     = 0,
+            Transparency = NumberSequence.new {
+                NumberSequenceKeypoint.new(0, 0),
+                NumberSequenceKeypoint.new(1, 1),
+            },
+        }
+
+        local black = Element {
+            ClassName             = "Frame",
+            Parent                = sv,
+            Size                  = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3      = Color3.new(0, 0, 0),
+            BorderSizePixel       = 0,
+            Active                = false,
+            ZIndex                = 48,
+        }
+        Element {
+            ClassName    = "UIGradient",
+            Parent       = black,
+            Rotation     = 90,
+            Transparency = NumberSequence.new {
+                NumberSequenceKeypoint.new(0, 1),
+                NumberSequenceKeypoint.new(1, 0),
+            },
+        }
+
+        local svMarker = Element {
+            ClassName             = "Frame",
+            Parent                = sv,
+            Name                  = "Marker",
+            BackgroundColor3      = Color3.new(1, 1, 1),
+            AnchorPoint           = Vector2.new(0.5, 0.5),
+            Size                  = UDim2.fromOffset(10, 10),
+            Active                = false,
+            ZIndex                = 50,
+        }
+        Element { ClassName = "UICorner", Parent = svMarker, CornerRadius = UDim.new(0.5, 0) }
+        Element { ClassName = "UIStroke", Parent = svMarker, Color = Color3.new(0, 0, 0), Transparency = 0.15, Thickness = 1 }
+
+        local hueBar = Element {
+            ClassName             = "TextButton",
+            Parent                = content,
+            Name                  = "Hue",
+            BackgroundColor3      = Color3.new(1, 1, 1),
+            AutoButtonColor       = false,
+            Text                  = "",
+            Size                  = UDim2.new(1, -8, 0, 16),
+            LayoutOrder           = 2,
+            ZIndex                = 46,
+        }
+        Element { ClassName = "UICorner", Parent = hueBar, CornerRadius = UDim.new(0.5, 0) }
+        Element {
+            ClassName = "UIGradient",
+            Parent    = hueBar,
+            Color     = ColorSequence.new {
+                ColorSequenceKeypoint.new(0 / 6, Color3.fromRGB(255, 0, 0)),
+                ColorSequenceKeypoint.new(1 / 6, Color3.fromRGB(255, 255, 0)),
+                ColorSequenceKeypoint.new(2 / 6, Color3.fromRGB(0, 255, 0)),
+                ColorSequenceKeypoint.new(3 / 6, Color3.fromRGB(0, 255, 255)),
+                ColorSequenceKeypoint.new(4 / 6, Color3.fromRGB(0, 0, 255)),
+                ColorSequenceKeypoint.new(5 / 6, Color3.fromRGB(255, 0, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)),
+            },
+        }
+
+        local hueMarker = Element {
+            ClassName             = "Frame",
+            Parent                = hueBar,
+            Name                  = "Marker",
+            BackgroundColor3      = Color3.new(1, 1, 1),
+            AnchorPoint           = Vector2.new(0.5, 0.5),
+            Position              = UDim2.new(0, 0, 0.5, 0),
+            Size                  = UDim2.fromOffset(8, 20),
+            Active                = false,
+            ZIndex                = 50,
+        }
+        Element { ClassName = "UICorner", Parent = hueMarker, CornerRadius = UDim.new(0, 3) }
+        Element { ClassName = "UIStroke", Parent = hueMarker, Color = Color3.new(0, 0, 0), Transparency = 0.15, Thickness = 1 }
+
+        local hexRow = Row(content, 3, 28)
+        Texted(hexRow, {
+            Text     = "HEX",
+            Size     = Theme.Type.Heading,
+            Tint     = "Muted",
+            Size2    = UDim2.new(0.25, 0, 1, 0),
+            ZIndex   = 47,
+        })
+        local hexBox
+        hexBox = Input {
+            Parent          = hexRow,
+            Name            = "Hex",
+            Size            = UDim2.new(0.72, 0, 0, 24),
+            Position        = UDim2.new(0.28, 0, 0, 2),
+            Text            = HexFromColor(state),
+            X               = Enum.TextXAlignment.Left,
+            SubmitOnEnter   = true,
+            PlaceholderText = "#RRGGBB",
+            ZIndex          = 47,
+            OnSubmit        = function(text)
+                local parsed = ColorFromHex(text)
+                if parsed == nil then
+                    hexBox.Text = HexFromColor(state)
+                    return
+                end
+                if updateView ~= nil then
+                    updateView(parsed)
+                end
+            end,
+        }
+
+        local rgbRow = Row(content, 4, 28)
+        Texted(rgbRow, {
+            Text     = "RGB",
+            Size     = Theme.Type.Heading,
+            Tint     = "Muted",
+            Size2    = UDim2.new(0.20, 0, 1, 0),
+            ZIndex   = 47,
+        })
+        local function ChannelBox(name, order, position)
+            local function ChannelValue()
+                return math.clamp(math.floor(state[name] * 255 + 0.5), 0, 255)
+            end
+            return Input {
+                Parent          = rgbRow,
+                Name            = name,
+                Size            = UDim2.new(0.22, 0, 0, 24),
+                Position        = position,
+                Text            = tostring(ChannelValue()),
+                X               = Enum.TextXAlignment.Center,
+                NumbersOnly     = true,
+                SubmitOnEnter   = true,
+                PlaceholderText = name,
+                ZIndex          = 47,
+                OnSubmit        = function(text)
+                    local channel = tonumber(text)
+                    if channel == nil or updateView == nil then
+                        return
+                    end
+                    channel = math.clamp(math.floor(channel), 0, 255)
+                    local red   = math.clamp(math.floor(state.R * 255 + 0.5), 0, 255)
+                    local green = math.clamp(math.floor(state.G * 255 + 0.5), 0, 255)
+                    local blue  = math.clamp(math.floor(state.B * 255 + 0.5), 0, 255)
+                    if name == "R" then
+                        red = channel
+                    elseif name == "G" then
+                        green = channel
+                    else
+                        blue = channel
+                    end
+                    updateView(Color3.fromRGB(red, green, blue))
+                end,
+            }
+        end
+        local rBox = ChannelBox("R", 1, UDim2.new(0.20, 0, 0, 2))
+        local gBox = ChannelBox("G", 2, UDim2.new(0.43, 0, 0, 2))
+        local bBox = ChannelBox("B", 3, UDim2.new(0.66, 0, 0, 2))
+
+        local previewRow = Row(content, 5, 28)
+        Texted(previewRow, {
+            Text     = "PREVIEW",
+            Size     = Theme.Type.Heading,
+            Tint     = "Muted",
+            Size2    = UDim2.new(0.6, 0, 1, 0),
+            ZIndex   = 47,
+        })
+        local preview = Sticker(Element {
+            ClassName             = "Frame",
+            Parent                = previewRow,
+            Name                  = "Preview",
+            BackgroundColor3      = state,
+            Size                  = UDim2.fromOffset(24, 24),
+            Position              = UDim2.new(1, -26, 0, 2),
+            ZIndex                = 47,
+        }, { Corner = "RowRadius", Stroke = "Line" })
+
+        local actions = Row(content, 6, 30)
+        local actionCell = Columns(actions, 2, 6, 30)
+        Button {
+            Parent  = actions,
+            Caption = "Apply",
+            Size    = actionCell,
+            Order   = 1,
+            ZIndex  = 47,
+            OnClick = function()
+                local applied = state
+                dialog:Close()
+                if type(properties.OnChange) == "function" then
+                    pcall(properties.OnChange, applied)
+                end
+            end,
+        }
+        Button {
+            Parent  = actions,
+            Caption = "Cancel",
+            Size    = actionCell,
+            Order   = 2,
+            ZIndex  = 47,
+            OnClick = function()
+                dialog:Close()
+            end,
+        }
+
+        updateView = function(color)
+            if typeof(color) ~= "Color3" then
+                return
+            end
+            state = color
+            hue, saturation, value = Color3.toHSV(color)
+            sv.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+            svMarker.Position = UDim2.new(saturation, 0, 1 - value, 0)
+            hueMarker.Position = UDim2.new(hue, 0, 0.5, 0)
+            preview.BackgroundColor3 = color
+            button.BackgroundColor3 = color
+            if not hexBox:IsFocused() then
+                hexBox.Text = HexFromColor(color)
+            end
+            if not rBox:IsFocused() then
+                rBox.Text = tostring(math.clamp(math.floor(color.R * 255 + 0.5), 0, 255))
+            end
+            if not gBox:IsFocused() then
+                gBox.Text = tostring(math.clamp(math.floor(color.G * 255 + 0.5), 0, 255))
+            end
+            if not bBox:IsFocused() then
+                bBox.Text = tostring(math.clamp(math.floor(color.B * 255 + 0.5), 0, 255))
+            end
+        end
+        updateView(state)
+
+        local draggingSV, draggingHue = false, false
+        local function PickSV(input)
+            local position = input.Position
+            local size = sv.AbsoluteSize
+            if size.X <= 0 or size.Y <= 0 then
+                return
+            end
+            local x = math.clamp((position.X - sv.AbsolutePosition.X) / size.X, 0, 1)
+            local y = math.clamp((position.Y - sv.AbsolutePosition.Y) / size.Y, 0, 1)
+            updateView(Color3.fromHSV(hue, x, 1 - y))
+        end
+        local function PickHue(input)
+            local size = hueBar.AbsoluteSize
+            if size.X <= 0 then
+                return
+            end
+            local x = math.clamp((input.Position.X - hueBar.AbsolutePosition.X) / size.X, 0, 1)
+            updateView(Color3.fromHSV(x, saturation, value))
+        end
+
+        local inputChanged = UserInput.InputChanged:Connect(function(input)
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+            if draggingSV then
+                PickSV(input)
+            elseif draggingHue then
+                PickHue(input)
+            end
+        end)
+        local inputEnded = UserInput.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                draggingSV, draggingHue = false, false
+            end
+        end)
+
+        sv.InputBegan:Connect(function(input)
+            if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+            draggingSV, draggingHue = true, false
+            PickSV(input)
+        end)
+        hueBar.InputBegan:Connect(function(input)
+            if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+            draggingHue, draggingSV = true, false
+            PickHue(input)
+        end)
+
+        local previousClose = dialog.Close
+        dialog.Close = function(self, ...)
+            pcall(function()
+                inputChanged:Disconnect()
+                inputEnded:Disconnect()
+            end)
+            return previousClose(self, ...)
+        end
+    end
+
+    button.MouseButton1Click:Connect(OpenDialog)
+    pcall(function()
+        button.Destroying:Connect(CloseDialog)
+    end)
+
+    return {
+        Frame = button,
+        Set = function(value)
+            if typeof(value) ~= "Color3" then
+                return
+            end
+            state = value
+            button.BackgroundColor3 = value
+            if updateView ~= nil then
+                updateView(value)
+            end
+        end,
+        Get = function()
+            return state
+        end,
+    }
+end
+
 local function EnsureBlur(settings)
     if settings.Blur == false or (settings.Blur or Theme.Blur) <= 0 then
         return nil
@@ -4251,6 +4865,8 @@ MonoUI.Select    = Select
 MonoUI.Input     = Input
 MonoUI.Button    = Button
 MonoUI.Heading   = Heading
+MonoUI.Help      = Help
+MonoUI.ColorPicker = ColorPicker
 MonoUI.CreateRegion = CreateRegion
 
 -- A surface is any frame that wants the shared backdrop while it is on screen: the blur for the game

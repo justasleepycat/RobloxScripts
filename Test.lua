@@ -118,3 +118,15 @@ end)
 
 task.wait(1)
 RunService:UnbindFromRenderStep("intervalWatchdog")
+
+local partCache = {}
+
+task.spawn(function()
+    while task.wait(.5) do
+        
+    end
+end)
+
+game:GetService("RunService"):BindToRenderStep("goonLoon", 0, function()
+    
+end)

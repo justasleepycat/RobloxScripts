@@ -1,5 +1,5 @@
 if PRINT_LOGS == nil then
-    PRINT_LOGS = true
+    PRINT_LOGS = false
 end
 
 --[[ GreenvilleVehicleProperties.lua ==========================================
@@ -45,6 +45,16 @@ end
           redline are left alone, so top speed is not reduced.
         - Refresh Values reads every row back from the live car and the tune without changing either,
           for when something else moved a value and the rows look stale.
+        - Adds a Drive tab. Boost burns Strength (studs/s total) along the selected velocity
+          components (X, Y, Z; for example X+Z keeps the horizontal part) and/or car directions
+          (Forward, Backward, Right, Left), summed and normalized; not fixed world axes. Car
+          directions allow boosting from rest. It stops at Max speed. Fly drives the car with
+          W/A/S/D relative to the camera, with a configurable maximum speed, CFrame or Velocity
+          movement, and optional lerping. Speed limits and the derived max-speed row are speedometer
+          mph (the raw studs-per-second conversion is four times the dial). Both have a selectable
+          keybind: None, F1-F15, every numpad key (Keypad0-9, plus, minus, multiply, divide,
+          period, enter, equals and NumLock), and Mouse Wheel Forward/Backward through
+          LocalPlayer:GetMouse(). F16-F18 and the mouse side buttons are not exposed by this client.
         - Reports every apply, save and restore in a toast and in the window's status line.
 
     Layout
@@ -118,6 +128,15 @@ local SelectionListSize = 180
 local ToastWidth        = 320
 local ToastLifetime     = 4
 
+-- The in-game speedometer reads a quarter of the raw studs-per-second conversion: 400 in the raw
+-- unit the rest of this file used to print shows as 100 on the dial. Every user-facing speed limit
+-- is therefore expressed in speedometer mph and converted here.
+local SPEEDOMETER_MPH_PER_STUD = 0.559234
+
+local function SpeedometerMph(velocity)
+    return velocity.Magnitude * SPEEDOMETER_MPH_PER_STUD
+end
+
 -- Presets live in the executor's own workspace folder, next to the script, as one JSON file. Only
 -- the presets for the car in front of the player are shown, but the file keeps every car's set.
 local PresetFilePath    = "GreenvilleVehicleProperties.presets.json"
@@ -160,6 +179,7 @@ local State = {
     tune               = nil,
     tuneModule         = nil,
     pollToken          = 0,
+    builderDialog      = nil,
     viewport           = nil,
     viewportDisplay    = nil,
     viewportCenter     = nil,
@@ -226,6 +246,232 @@ local WheelLock = {
 local WHEEL_NAMES         = { "FL", "FR", "RL", "RR" }
 local WHEEL_LOCK_SPEED    = 300
 local WHEEL_UNLOCK_SPEED  = 295
+
+-- Boost: add Strength along the car's current velocity over Duration, stopping at MaxSpeedMph.
+local Boost = {
+    Strength      = 10,
+    MaxSpeedMph   = 400,
+    Duration      = 0.75,
+    Axes          = { X = true, Y = true, Z = true },
+    ActiveAxes    = {},
+    ActiveLabel   = "X, Y, Z",
+    AxisOpen      = false,
+    AxisPanel     = nil,
+    AxisStatus    = nil,
+    AxisRefreshers = {},
+    Active        = false,
+    Elapsed       = 0,
+    Car           = nil,
+    Connection    = nil,
+    Keybind       = "None",
+    KeySelect     = nil,
+    StrengthInput = nil,
+    MaxSpeedInput = nil,
+    DurationInput = nil,
+}
+
+-- Fly: the car follows the camera. CFrame mode anchors the seat and writes its CFrame; Velocity
+-- mode leaves it unanchored and writes AssemblyLinearVelocity. Both can lerp toward the target.
+local Fly = {
+    Active           = false,
+    MaxSpeedMph      = 250,
+    Mode             = "CFrame",
+    Lerp             = true,
+    LerpRate         = 10,
+    Keys             = { W = false, A = false, S = false, D = false },
+    Car              = nil,
+    Seat             = nil,
+    OriginalAnchored = false,
+    Connection       = nil,
+    KeyConnections   = {},
+    Switch           = nil,
+    ModeSelect       = nil,
+    LerpSwitch       = nil,
+    Keybind          = "None",
+    KeySelect        = nil,
+    MaxSpeedInput    = nil,
+}
+
+-- Roblox only exposes the function keys the engine knows; every one that exists up to F18 is
+-- offered, so this is F1..F15 on the current client and will include F16..F18 if they are added.
+local KEYBIND_OPTIONS = { "None" }
+for index = 1, 18 do
+    local ok, keyCode = pcall(function()
+        return Enum.KeyCode["F" .. index]
+    end)
+    if ok and keyCode ~= nil then
+        KEYBIND_OPTIONS[#KEYBIND_OPTIONS + 1] = "F" .. index
+    end
+end
+
+-- Player:GetMouse() exposes the wheel's forward and backward events. The side buttons have no
+-- Button4/Button5 events and no UserInputType/KeyCode in this client, so the wheel is the mouse
+-- forward/backward input that can be bound.
+local DriveMouse = nil
+local HasWheelForward = false
+local HasWheelBackward = false
+local mouseOk, mouseObject = pcall(function()
+    return Player:GetMouse()
+end)
+if mouseOk and mouseObject ~= nil then
+    DriveMouse = mouseObject
+    local forwardOk = pcall(function()
+        return DriveMouse.WheelForward
+    end)
+    if forwardOk then
+        HasWheelForward = true
+        KEYBIND_OPTIONS[#KEYBIND_OPTIONS + 1] = "Wheel Forward"
+    end
+    local backwardOk = pcall(function()
+        return DriveMouse.WheelBackward
+    end)
+    if backwardOk then
+        HasWheelBackward = true
+        KEYBIND_OPTIONS[#KEYBIND_OPTIONS + 1] = "Wheel Backward"
+    end
+end
+
+for _, item in ipairs(Enum.KeyCode:GetEnumItems()) do
+    local name = item.Name
+    if string.sub(name, 1, 6) == "Keypad" or name == "NumLock" then
+        KEYBIND_OPTIONS[#KEYBIND_OPTIONS + 1] = name
+    end
+end
+
+local BOOST_AXIS_OPTIONS = { "X", "Y", "Z", "Forward", "Backward", "Right", "Left" }
+
+-- The Drive tab is part of the config: these helpers capture and restore its settings, and the
+-- config file keeps both a current copy and one per preset.
+local SaveDriveConfigSoon
+
+local function FormatDriveAxes(axes)
+    local names = {}
+    for _, axis in ipairs(BOOST_AXIS_OPTIONS) do
+        if axes[axis] then
+            names[#names + 1] = axis
+        end
+    end
+    if #names == 0 then
+        return "None"
+    end
+    return table.concat(names, ", ")
+end
+
+local function ValidKeybind(value)
+    if value == "None" then
+        return true
+    end
+    for _, option in ipairs(KEYBIND_OPTIONS) do
+        if option == value then
+            return true
+        end
+    end
+    return false
+end
+
+local function CaptureDriveSettings()
+    local axes = {}
+    for _, axis in ipairs(BOOST_AXIS_OPTIONS) do
+        if Boost.Axes[axis] then
+            axes[axis] = true
+        end
+    end
+    return {
+        boost = {
+            strength    = Boost.Strength,
+            maxSpeedMph = Boost.MaxSpeedMph,
+            duration    = Boost.Duration,
+            axes        = axes,
+            keybind     = Boost.Keybind,
+        },
+        fly = {
+            maxSpeedMph = Fly.MaxSpeedMph,
+            mode        = Fly.Mode,
+            lerp        = Fly.Lerp,
+            keybind     = Fly.Keybind,
+        },
+    }
+end
+
+local function ApplyDriveSettings(config, silent)
+    if type(config) ~= "table" then
+        return false
+    end
+    local boost = type(config.boost) == "table" and config.boost or {}
+    local fly = type(config.fly) == "table" and config.fly or {}
+
+    if type(boost.strength) == "number" and boost.strength > 0 then
+        Boost.Strength = boost.strength
+    end
+    if type(boost.maxSpeedMph) == "number" and boost.maxSpeedMph > 0 then
+        Boost.MaxSpeedMph = boost.maxSpeedMph
+    end
+    if type(boost.duration) == "number" and boost.duration > 0 then
+        Boost.Duration = boost.duration
+    end
+    if type(boost.axes) == "table" then
+        Boost.Axes = {}
+        for _, axis in ipairs(BOOST_AXIS_OPTIONS) do
+            if boost.axes[axis] then
+                Boost.Axes[axis] = true
+            end
+        end
+    end
+    if type(boost.keybind) == "string" and ValidKeybind(boost.keybind) then
+        Boost.Keybind = boost.keybind
+    end
+
+    if type(fly.maxSpeedMph) == "number" and fly.maxSpeedMph > 0 then
+        Fly.MaxSpeedMph = fly.maxSpeedMph
+    end
+    if fly.mode == "CFrame" or fly.mode == "Velocity" then
+        Fly.Mode = fly.mode
+    end
+    if type(fly.lerp) == "boolean" then
+        Fly.Lerp = fly.lerp
+    end
+    if type(fly.keybind) == "string" and ValidKeybind(fly.keybind) then
+        Fly.Keybind = fly.keybind
+    end
+
+    if Boost.StrengthInput ~= nil then
+        Boost.StrengthInput.Text = tostring(Boost.Strength)
+    end
+    if Boost.MaxSpeedInput ~= nil then
+        Boost.MaxSpeedInput.Text = tostring(Boost.MaxSpeedMph)
+    end
+    if Boost.DurationInput ~= nil then
+        Boost.DurationInput.Text = tostring(Boost.Duration)
+    end
+    if Fly.MaxSpeedInput ~= nil then
+        Fly.MaxSpeedInput.Text = tostring(Fly.MaxSpeedMph)
+    end
+    if Boost.KeySelect ~= nil then
+        Boost.KeySelect.Set(Boost.Keybind)
+    end
+    if Fly.KeySelect ~= nil then
+        Fly.KeySelect.Set(Fly.Keybind)
+    end
+    if Fly.ModeSelect ~= nil then
+        Fly.ModeSelect.Set(Fly.Mode)
+    end
+    if Fly.LerpSwitch ~= nil then
+        Fly.LerpSwitch.Set(Fly.Lerp)
+    end
+    for _, refresh in ipairs(Boost.AxisRefreshers) do
+        pcall(refresh)
+    end
+    if Boost.AxisStatus ~= nil then
+        Boost.AxisStatus.Text = "Selected: " .. FormatDriveAxes(Boost.Axes)
+    end
+    if Fly.Active and Fly.Seat ~= nil and Fly.Seat.Parent ~= nil then
+        Fly.Seat.Anchored = Fly.Mode == "CFrame"
+    end
+    if SaveDriveConfigSoon ~= nil then
+        SaveDriveConfigSoon()
+    end
+    return true
+end
 
 -- Assigned with the display, but needed by the apply path above it.
 local ScheduleViewportRefresh
@@ -507,8 +753,159 @@ local MotorFields = {
     { key = "S_Sensitivity",    label = "Supercharger sensitivity" },
 }
 
--- The same arithmetic the dealership uses for its speed spec: the driven wheel's diameter, the
--- redline, the last gear ratio and the final drive, in the unit the car's speedometer speaks.
+--=== help copy =============================================================
+
+local GroupHelp = {
+    Paint      = "Paint channels are painted onto the Body and Misc parts named Color, Color1, Color2 and Color3. The color is the panel colour; reflectance is the clearcoat highlight. Paint changes are local to this client and are applied immediately.",
+    Interior   = "Interior channels drive the InteriorColor, InteriorColor1..6 parts. Colour sets the trim colour, material changes the surface type and reflectance controls how glossy it is. Interior changes are applied immediately on this client.",
+    Plates     = "Plate data is stored on the car and rendered on the plate. PlateText is the displayed registration, PlateCode is the issuing state code, PlateType selects the plate style and PlateVanity keeps a personalised plate. StateName is the state shown on the plate.",
+    Rims       = "RimDecal is a Roblox asset id applied to the visible rim decals on all four wheels. An empty value leaves the current rim finish alone.",
+    Brakes     = "ClassicBrake values paint the brake calipers and visible brake hardware inside WheelFixed. They do not change braking force; use BrakeForce, PBrakeForce and EBrakeForce for that.",
+    Suspension = "SuspensionTune values are read by A-Chassis while the car is initialising. Height moves the ride height, camber tilts the wheel, offset moves it in or out and the accessory offsets position the suspension trim. Stay inside the limits shown by the game's SuspensionLimits module.",
+    Dynamics   = "Dynamics values control the drivetrain, tire compounds, traction control, ABS, brake bias and steering response. A-Chassis reads them when the car initialises, so a change generally needs the player to exit and re-enter the vehicle.",
+    Friction   = "Friction values are local tire grip values. Friction_UseLocalValues must be true for the other Friction_* values to be used. Higher values grip more; lower values slide more. The server may reset these values, so re-check them after a respawn.",
+    Condition  = "Condition values describe the car's current wear and mileage. They are normal car data rather than a styling or performance setting; editing them changes the local car model only.",
+    Motor      = "This is an A-Chassis tune field. The chassis reads it when the car initialises, so exit and re-enter the vehicle to apply a change. Client-side tune edits are lost when the car respawns.",
+    Other      = "This is a car attribute exposed by Greenville. The editor writes it directly to the local car model; whether the visible car reacts depends on which system reads the attribute.",
+}
+
+local KeyHelp = {
+    PaintColor0     = "PaintColor0 is the main body colour for the Color parts. Use the swatch to open the colour editor, then Apply to paint the car immediately.",
+    PaintColor1     = "PaintColor1 is the second paint channel (usually the secondary body or trim colour). It is painted onto Body and Misc parts named Color1.",
+    PaintColor2     = "PaintColor2 is the third paint channel (often a stripe, lower body or accent colour). It is painted onto Color2 parts.",
+    PaintColor3     = "PaintColor3 is the fourth paint channel (often a detail or pinstripe colour). It is painted onto Color3 parts.",
+    PaintReflectance0 = "PaintReflectance0 is the clearcoat reflectance of the main paint channel. 0 is matte, around 0.1-0.3 is glossy, and 1 is mirror-like.",
+    PaintReflectance1 = "PaintReflectance1 is the clearcoat reflectance of paint channel 1. Higher values make that panel or stripe shinier.",
+    PaintReflectance2 = "PaintReflectance2 is the clearcoat reflectance of paint channel 2. Higher values make that accent shinier.",
+    PaintReflectance3 = "PaintReflectance3 is the clearcoat reflectance of paint channel 3. Higher values make that detail shinier.",
+    PlateText       = "PlateText is the registration shown on the physical plate. Greenville renders it through the plate SurfaceGui; it can contain letters, digits and a dash within the plate's character limit.",
+    PlateCode       = "PlateCode is the jurisdiction code shown beside the plate text. The dropdown lists the codes the current car's plate data exposes.",
+    PlateType       = "PlateType selects the plate style, such as a normal, dealer or vanity plate. It changes which plate artwork the game draws.",
+    PlateVanity     = "PlateVanity marks the plate as a personalised vanity plate. The game uses it when deciding which plate layout and text rules to use.",
+    StateName       = "StateName is the state or region shown on the plate. It is a display string, not a plate texture id.",
+    RimDecal        = "RimDecal is a Roblox asset id for the rim decal. Applying it sets the decal on every wheel's Parts.Rims holder and restores the visible wheel mesh.",
+    ClassicBrakeColor = "ClassicBrakeColor is the colour of the brake calipers and visible brake hardware inside WheelFixed. Use the swatch to edit it.",
+    ClassicBrakeReflectance = "ClassicBrakeReflectance controls how glossy the caliper paint is. 0 is matte; higher values catch more light.",
+    ClassicBrakeMaterial = "ClassicBrakeMaterial sets the Roblox Material on the caliper parts, for example SmoothPlastic, Metal or Neon.",
+    ClassicBrakeVariant = "ClassicBrakeVariant is the MaterialVariant name applied to the caliper parts. Leave it empty to use the material's default look.",
+    SuspensionTune_Height = "SuspensionTune_Height moves the whole car up or down relative to the wheels. The game's editor limits it to about +/-0.32; larger values can make the wheels lose contact.",
+    SuspensionTune_FrontCamber = "SuspensionTune_FrontCamber tilts the front wheels inward or outward. Negative camber leans the top inward; values are read when the car spawns.",
+    SuspensionTune_RearCamber = "SuspensionTune_RearCamber tilts the rear wheels. Small negative values improve cornering grip; extreme values reduce the contact patch.",
+    SuspensionTune_FrontOffset = "SuspensionTune_FrontOffset moves the front wheels outward or inward relative to the body. Stay within the game's suspension limits to avoid clipping the arch.",
+    SuspensionTune_RearOffset = "SuspensionTune_RearOffset moves the rear wheels outward or inward. It is useful for flush fitment but can cause tire and body collisions at extremes.",
+    SuspensionTune_FrontAccessoryOffset = "SuspensionTune_FrontAccessoryOffset adjusts the front suspension trim independently of the wheel. It is cosmetic and is applied at spawn.",
+    SuspensionTune_RearAccessoryOffset = "SuspensionTune_RearAccessoryOffset adjusts the rear suspension trim independently of the wheel. It is cosmetic and is applied at spawn.",
+    Dynamics_Drivetrain = "Dynamics_Drivetrain selects which wheels receive power: AWD, RWD or FWD. A-Chassis reads it at spawn; changing it while driving does nothing until the car is re-entered.",
+    Dynamics_Traction = "Dynamics_Traction enables traction control. It cuts torque when the driven wheels slip, which helps launches but can slow a deliberate drift.",
+    Dynamics_Antilock = "Dynamics_Antilock enables ABS. It releases brake pressure when a wheel locks, trading some stopping distance for steering control under heavy braking.",
+    Dynamics_BrakeBias = "Dynamics_BrakeBias moves braking force between the front and rear. -1 and 1 are the extremes; 0 is a neutral starting point. Too much rear bias can spin the car.",
+    Dynamics_SteerAngleMult = "Dynamics_SteerAngleMult scales the maximum steering angle. Lower values calm the car at speed; higher values turn in harder and can make it twitchy.",
+    Dynamics_SteerTorqueMult = "Dynamics_SteerTorqueMult scales the steering motor torque. Higher values reach the target angle faster and hold it against self-aligning forces.",
+    Dynamics_SteerDampMult = "Dynamics_SteerDampMult scales steering damping. More damping suppresses oscillation; too much makes the steering feel slow and heavy.",
+    Dynamics_SteerDecayMult = "Dynamics_SteerDecayMult scales how quickly the steering returns toward centre when the player lets go.",
+    Dynamics_FSuspDampMult = "Dynamics_FSuspDampMult scales front suspension damping. More damping controls bounce; too much makes the front feel rigid and skittish.",
+    Dynamics_RSuspDampMult = "Dynamics_RSuspDampMult scales rear suspension damping. More damping settles the rear; too much reduces mechanical grip over bumps.",
+    Dynamics_FSuspStiffMult = "Dynamics_FSuspStiffMult scales front spring stiffness. Stiffer springs resist roll and dive but reduce compliance.",
+    Dynamics_RSuspStiffMult = "Dynamics_RSuspStiffMult scales rear spring stiffness. Stiffer rear springs reduce squat but can make the car snap loose.",
+    Dynamics_FTireCompound = "Dynamics_FTireCompound selects the front tire compound. The options come from the game's WheelFX TireTextures module; each compound has its own grip curve.",
+    Dynamics_RTireCompound = "Dynamics_RTireCompound selects the rear tire compound. Mixing compounds changes the balance; a stickier rear increases understeer resistance.",
+    Friction_UseLocalValues = "Friction_UseLocalValues switches the wheel friction model to the local Friction_* values. Turn it on before expecting the other values to do anything.",
+    Friction_DryRoad = "Friction_DryRoad is the grip multiplier on dry tarmac. The game's normal road value is around 1.0; lower values slide more.",
+    Friction_WetRoad = "Friction_WetRoad is the grip multiplier on wet tarmac. It is usually lower than DryRoad; raising it makes wet roads behave like dry ones.",
+    Friction_DryDirt = "Friction_DryDirt is the grip multiplier on dry dirt. Lower values make the car slide more on loose surfaces.",
+    Friction_WetDirt = "Friction_WetDirt is the grip multiplier on wet dirt. It should normally be lower than the dry-dirt value.",
+    Friction_DryGrass = "Friction_DryGrass is the grip multiplier on dry grass. Grass is usually much slippier than tarmac.",
+    Friction_WetGrass = "Friction_WetGrass is the grip multiplier on wet grass. Lower it for even less traction.",
+    DirtLevel = "DirtLevel is the car's accumulated dirt from 0 (clean) to 1 (dirty). The game applies dirt textures from this value; editing it changes the local appearance.",
+    Odometer = "Odometer is the car's mileage counter in miles. It is read from the car model and is normally maintained by the game.",
+    InBounds = "InBounds reports whether the car is inside the game's playable boundary. It is a runtime flag, not a styling setting.",
+}
+
+local MotorHelp = {
+    Horsepower       = "Horsepower is the engine's rated power. A-Chassis turns it into a torque curve together with PeakRPM, so raising it makes the car pull harder everywhere, not just at the top end.",
+    Weight           = "Weight is the car's mass in pounds. More weight reduces acceleration and tyre load response; less weight makes it quicker but can make the car nervous and airborne over crests.",
+    WeightDist       = "WeightDist is the front percentage of the car's weight. 50 is neutral; moving it forward adds front grip and stability, moving it rearward helps rotation but can cause oversteer.",
+    CGHeight         = "CGHeight is the centre of gravity above the car's origin, in studs. Lowering it reduces body roll and rollover risk; raising it makes weight transfer and roll more dramatic.",
+    Redline          = "Redline is the maximum engine RPM used by the automatic gearbox. In the top gear it is one of the two numbers that decide the car's theoretical top speed.",
+    PeakRPM          = "PeakRPM is the engine speed where the torque curve peaks. A lower value makes the engine pull from low RPM; a higher value favours a screaming top end.",
+    FinalDrive       = "FinalDrive is the axle ratio after the gearbox. A numerically higher final drive multiplies torque and lowers top speed; a lower one does the opposite.",
+    FDMult           = "FDMult is a final-drive multiplier applied on top of FinalDrive. The dealership's speed calculation divides by it, so it can trim top speed without changing the physical axle ratio.",
+    Ratios           = "Ratios is A-Chassis's gear table: index 1 is reverse, index 2 is neutral (normally 0), and indices 3 onward are the forward gears. A-Chassis uses Ratios[3] as first gear and Ratios[#] as top gear. The last forward ratio, FinalDrive and Redline decide top speed; the first forward ratio decides launch punch.",
+    BrakeForce       = "BrakeForce is the total brake torque applied by the service brakes. Higher values stop harder but can lock the wheels if ABS is off.",
+    PBrakeForce      = "PBrakeForce is the parking-brake torque. It holds the car when parked and can lock the rear wheels if applied while moving.",
+    EBrakeForce      = "EBrakeForce is the handbrake torque. Raising it makes handbrake turns easier; too much can stop the car instantly or spin it.",
+    SteerMaxTorque   = "SteerMaxTorque is the front steering motor's maximum torque. More torque reaches the target angle faster but can feel artificial and twitchy.",
+    RSteerMaxTorque  = "RSteerMaxTorque is the rear-steer motor torque. It only matters on cars with rear-wheel steering; more torque makes the rear axle respond faster.",
+    E_Horsepower     = "E_Horsepower is the electric motor's rated power when the car uses the electric drivetrain. It is separate from the combustion Horsepower.",
+    E_Torque         = "E_Torque is the electric motor's torque. Electric torque is available from zero RPM, so this value strongly affects launch.",
+    E_Redline        = "E_Redline is the electric motor's RPM limit. It decides the electric drivetrain's top speed much like Redline does for combustion.",
+    E_Trans1         = "E_Trans1 is the first electric torque-curve point. It shapes how quickly the electric motor reaches peak torque.",
+    E_Trans2         = "E_Trans2 is the second electric torque-curve point. Together with E_Trans1 it shapes the electric motor's pull at speed.",
+    TorqueVector     = "TorqueVector splits drive torque between the left and right wheels to help the car turn. Higher values rotate the car more aggressively.",
+    FDiffPreload     = "FDiffPreload is the front differential's preload. More preload resists wheel-speed differences and stabilises the front axle under power.",
+    RDiffPreload     = "RDiffPreload is the rear differential's preload. More preload reduces inside-wheel slip but can increase understeer.",
+    ThrotAccel       = "ThrotAccel is how quickly the throttle rises toward the requested value. Higher values respond faster and can make the car jerkier.",
+    ThrotDecel       = "ThrotDecel is how quickly the throttle falls when released. Higher values engine-brake more sharply.",
+    BrakeAccel       = "BrakeAccel is how quickly brake pressure builds. Higher values make the initial pedal bite stronger.",
+    BrakeDecel       = "BrakeDecel is how quickly brake pressure releases. Higher values let the car roll freely sooner.",
+    RevAccel         = "RevAccel is how quickly the engine revs in neutral. It affects throttle blips and the sound/RPM response.",
+    LaunchRPM        = "LaunchRPM is the RPM the launch controller tries to hold before the clutch engages. Higher values launch harder but can spin the tyres.",
+    LaunchMult       = "LaunchMult scales the launch torque. Higher values make launches more violent; lower values are gentler and more controllable.",
+    KickMult         = "KickMult is the extra torque applied when the throttle is stabbed at low speed (the kickdown/overboost effect).",
+    Turbochargers    = "Turbochargers is how many turbochargers the tune models. It changes how the boost curve is applied.",
+    T_Boost          = "T_Boost is the turbo boost pressure contribution. Higher values add more top-end torque.",
+    T_Efficiency     = "T_Efficiency is the turbo's efficiency. Higher values reduce lag and make the boost more useful.",
+    T_Size           = "T_Size is the turbo size. Larger turbos usually make more top-end power at the cost of spool time.",
+    Superchargers    = "Superchargers is how many superchargers the tune models. Superchargers add boost more linearly than turbos.",
+    S_Boost          = "S_Boost is the supercharger boost contribution. Higher values add torque throughout the rev range.",
+    S_Efficiency     = "S_Efficiency is the supercharger's efficiency. Higher values waste less power driving the blower.",
+    S_Sensitivity    = "S_Sensitivity controls how strongly the supercharger boost follows throttle. Higher values make it respond more sharply.",
+}
+
+local DerivedHelp = {
+    MaxSpeed     = "Max speed is calculated from the driven wheel's diameter, Redline, the last gear ratio, FinalDrive and FDMult, then converted to the speedometer's mph scale. It is a theoretical top-gear speed, not a measured run.",
+    Acceleration = "Acceleration is the ideal 0-60 mph time from a simple power-to-weight estimate. It assumes every horsepower reaches the road with no losses, traction limit or shifting, so real times will be slower.",
+}
+
+local FEATURE_HELP = {
+    Stabilize = "Stabilize High Speed writes a conservative high-speed setup: suspension height and damping are brought back inside the game's editor limits, camber is reduced, the centre of gravity is lowered, the car is weighted for its springs, and AWD, traction control, ABS, track tires and calmer steering are selected. It also enables Downforce Assist and Wheel Lock. Chassis and motor values apply after you exit and re-enter the vehicle.",
+    Refresh = "Refresh Values re-reads every property from the live car and the A-Chassis tune without changing either. It also releases any focused textbox first, then rebuilds the list if the car's attribute layout changed. Use it after a respawn or after another editor changed the car.",
+    Downforce = "Downforce Assist adds a local downward force to the car as speed rises. It starts above about 70 mph, grows with the square of speed and pushes near the centre of mass. It also re-asserts dry-road friction every second. It is a client-side aid, not a server modification.",
+    WheelLock = "Wheel Lock 300+ places an axle-aligned hinge on each wheel above 300 mph. The hinge holds the wheel's position relative to the chassis and locks steering and camber while leaving the wheel free to roll. Below 295 mph the hinges are removed and the original suspension and steering links are restored. It is intended only for extreme-speed stabilisation.",
+    SaveRestore = "Save / Restore Properties stores a snapshot of the selected car and wheel attributes. Open the panel to choose which properties are included; Select All and Unselect All are at the top. Saving captures the values, restoring writes them back to the local car. Snapshots are in memory and are lost when the script unloads, so save a named preset instead for a persistent copy.",
+    Unload = "Unload closes the editor, stops Downforce, Boost and Fly, removes the Wheel Lock hinges, disconnects every listener and removes the window. It restores any values the editor changed while it was running; the car then belongs to the game again.",
+    GearRatioBuilder = "The Gear Ratio Builder turns a target top speed into a usable A-Chassis gear set. It uses the driven wheel's diameter, Redline, FinalDrive, FDMult and the number of forward gears. Build preserves the reverse and neutral slots and generates a geometric spread from your first forward gear to the top forward gear. Apply writes the result into the tune; exit and re-enter the vehicle for A-Chassis to use it.",
+    FinalDriveBuilder = "The Final Drive Builder splits A-Chassis's final drive into its two components: FinalDrive (the axle ratio) and FDMult (the multiplier). Enter a total final-drive product and an axle ratio, then Build calculates the multiplier. Apply writes both fields into the tune. If the product stays the same, the car's physics stays the same; splitting only changes how the two fields are labelled.",
+    MaxSpeedBuilder = "The Max Speed Builder calculates the final drive needed for a target top speed with the current gear ratios. Its acceleration section uses a real-world efficiency and a grip-limited 0-60 floor (defaults 12.5% and 1.0 s) to turn a target time into a required horsepower; the current HP is kept when it is already higher. Apply acceleration writes horsepower, the first forward ratio, AWD, TCS/ABS, sticky tires, local dry-road friction, weight distribution and centre of gravity so the launch actually changes. Exit and re-enter the vehicle for A-Chassis to read the tune.",
+}
+
+local function PropertyHelp(key, group, kind)
+    local specific = KeyHelp[key]
+    if specific == nil then
+        local slot, field = string.match(key, "^Int(%d)_(%a+)$")
+        if slot ~= nil then
+            if field == "Color" then
+                local name = slot == "0" and "InteriorColor" or ("InteriorColor" .. slot)
+                specific = string.format("Int%s_Color is the colour of the %s interior trim. The editor paints every part with that name; the swatch opens the colour picker.", slot, name)
+            elseif field == "Reflectance" then
+                specific = string.format("Int%s_Reflectance is the gloss of interior channel %s. 0 is matte; higher values catch more light.", slot, slot)
+            elseif field == "Material" then
+                specific = string.format("Int%s_Material is the Roblox Material used on interior channel %s. The dropdown lists every Material the client exposes.", slot, slot)
+            elseif field == "Variant" then
+                specific = string.format("Int%s_Variant is the MaterialVariant name for interior channel %s. It refines the selected material; leave it empty for the default variant.", slot, slot)
+            end
+        end
+    end
+    if specific == nil then
+        specific = GroupHelp[group] or GroupHelp.Other
+    end
+    local kindText = kind == "Color" and "Colour3" or tostring(kind or "value")
+    return string.format(
+        "%s — %s property (%s).\n\n%s\n\nEdit the value in the field or picker on the right. Changes are written to the local car; values marked as spawn-read need the player to exit and re-enter the vehicle before A-Chassis sees them.",
+        key, group, kindText, specific
+    )
+end
+
 local function ComputeMaxSpeed()
     local tune = State.tune
     local wheels = State.wheels
@@ -1455,6 +1852,7 @@ local function NormalizePresets(list)
                     autoLoad = preset.autoLoad == true,
                     savedAt  = tonumber(preset.savedAt) or 0,
                     values   = preset.values,
+                    drive    = type(preset.drive) == "table" and preset.drive or nil,
                 })
             end
         end
@@ -1526,6 +1924,9 @@ local function ReadPresetsFile()
         list = decoded
     end
     State.presets = NormalizePresets(list)
+    if type(decoded.drive) == "table" then
+        ApplyDriveSettings(decoded.drive, true)
+    end
     LogInfo(string.format("Loaded %d presets from %s", #State.presets, PresetFilePath))
 end
 
@@ -1535,7 +1936,11 @@ local function WritePresetsFile()
         return false
     end
     local encodeOk, json = pcall(function()
-        return HttpService:JSONEncode({ version = 1, presets = State.presets })
+        return HttpService:JSONEncode({
+            version = 1,
+            drive   = CaptureDriveSettings(),
+            presets = State.presets,
+        })
     end)
     if not encodeOk then
         LogError("Could not encode presets: " .. tostring(json))
@@ -1548,6 +1953,18 @@ local function WritePresetsFile()
     end
     LogInfo(string.format("Saved %d presets to %s", #State.presets, PresetFilePath))
     return true
+end
+
+local DriveSavePending = false
+SaveDriveConfigSoon = function()
+    if DriveSavePending then
+        return
+    end
+    DriveSavePending = true
+    task.delay(0.5, function()
+        DriveSavePending = false
+        WritePresetsFile()
+    end)
 end
 
 local function NewPresetId(carId)
@@ -1606,10 +2023,16 @@ local function ApplyPreset(preset, silent)
         end
     end
 
+    local driveApplied = false
+    if type(preset.drive) == "table" then
+        driveApplied = ApplyDriveSettings(preset.drive, true)
+    end
+
+    local driveNote = driveApplied and " + Drive" or ""
     local reentry = PresetNeedsReentry(preset) and " · re-enter for chassis values" or ""
     if not silent then
         if failed == 0 then
-            Notify("success", string.format("Loaded preset '%s' (%d properties)%s", preset.name, applied, reentry))
+            Notify("success", string.format("Loaded preset '%s' (%d properties%s)%s", preset.name, applied, driveNote, reentry))
         else
             Notify("error", string.format("Preset '%s': %d applied, %d failed", preset.name, applied, failed))
         end
@@ -1634,9 +2057,10 @@ local function MaybeAutoLoad()
     end
 
     local applied, failed = ApplyPreset(preset, true)
+    local driveNote = type(preset.drive) == "table" and " + Drive" or ""
     local reentry = PresetNeedsReentry(preset) and " · re-enter for chassis values" or ""
     if failed == 0 then
-        Notify("success", string.format("Auto-loaded preset '%s' (%d properties)%s", preset.name, applied, reentry))
+        Notify("success", string.format("Auto-loaded preset '%s' (%d properties%s)%s", preset.name, applied, driveNote, reentry))
     else
         Notify("error", string.format("Auto-load '%s': %d applied, %d failed", preset.name, applied, failed))
     end
@@ -1912,15 +2336,17 @@ local function CreateTextEditor(row, entry)
 end
 
 local function CreateColorEditor(row, entry)
-    local swatch = MonoUI.Sticker(MonoUI.Element {
-        ClassName        = "Frame",
-        Parent           = row,
-        Name             = "Swatch",
-        BackgroundColor3 = entry.value,
-        Size             = UDim2.fromOffset(24, 24),
-        Position         = UDim2.new(0.52, 0, 0, 3),
-        ZIndex           = 3,
-    }, { Corner = "RowRadius", Stroke = "Line" })
+    local picker = MonoUI.ColorPicker {
+        Parent   = row,
+        Name     = entry.key .. "Picker",
+        Size     = UDim2.fromOffset(24, 24),
+        Position = UDim2.new(0.52, 0, 0, 3),
+        Value    = entry.value,
+        Title    = entry.label,
+        OnChange = function(color)
+            ApplyProperty(entry, color)
+        end,
+    }
 
     local control
     control = MonoUI.Input {
@@ -1950,7 +2376,7 @@ local function CreateColorEditor(row, entry)
             if typeof(value) ~= "Color3" then
                 return
             end
-            swatch.BackgroundColor3 = value
+            picker.Set(value)
             if not control:IsFocused() then
                 control.Text = ColorToHex(value)
             end
@@ -2092,13 +2518,19 @@ end
 
 local function CreatePropertyRow(parent, order, entry)
     local row = MonoUI.Row(parent, order, RowHeight)
+    MonoUI.Help {
+        Parent   = row,
+        Position = UDim2.fromOffset(0, 7),
+        Title    = entry.label,
+        Text     = entry.help,
+    }
     MonoUI.Texted(row, {
         Text     = entry.label,
         Size     = Theme.Type.Body,
         Tint     = "Text",
         Bold     = false,
-        Position = UDim2.fromOffset(0, 0),
-        Size2    = UDim2.new(0.50, -4, 1, 0),
+        Position = UDim2.fromOffset(20, 0),
+        Size2    = UDim2.new(0.50, -24, 1, 0),
         ZIndex   = 3,
     })
 
@@ -2126,6 +2558,8 @@ local function CreatePropertyRow(parent, order, entry)
 end
 
 local function AttributeEntry(target, targetName, key, value)
+    local kind = KindOf(value)
+    local group = GroupOf(key)
     return {
         id         = targetName .. "." .. key,
         key        = key,
@@ -2133,9 +2567,10 @@ local function AttributeEntry(target, targetName, key, value)
         target     = target,
         targetName = targetName,
         source     = "Attribute",
-        kind       = KindOf(value),
+        kind       = kind,
         value      = value,
-        group      = GroupOf(key),
+        group      = group,
+        help       = PropertyHelp(key, group, kind),
         getValue   = function()
             return target:GetAttribute(key)
         end,
@@ -2160,6 +2595,7 @@ local function TuneEntry(tune, spec, order)
         value     = value,
         group     = "Motor",
         order     = order,
+        help      = MotorHelp[spec.key] or GroupHelp.Motor,
         getValue  = function()
             return tune[spec.key]
         end,
@@ -2182,6 +2618,7 @@ local function DerivedEntry(key, label, compute, order)
         readOnly = true,
         compute  = compute,
         getValue = compute,
+        help     = DerivedHelp[key] or GroupHelp.Motor,
     }
 end
 
@@ -2201,7 +2638,7 @@ local function CollectEntries()
     Collect(State.wheels, "Wheels")
 
     if State.tune ~= nil then
-        table.insert(entries, DerivedEntry("MaxSpeed", "Max speed (mph)", ComputeMaxSpeed, 1))
+        table.insert(entries, DerivedEntry("MaxSpeed", "Max speed (speedometer mph)", ComputeMaxSpeed, 1))
         table.insert(entries, DerivedEntry("Acceleration", "Acceleration (0-60 ideal, s)", ComputeAcceleration, 2))
         for index, spec in ipairs(MotorFields) do
             if State.tune[spec.key] ~= nil then
@@ -2641,10 +3078,12 @@ local function SavePresetFromName(text)
         LogError(string.format("%d properties could not be serialized", skipped))
     end
     local identity = ResolveCarIdentity(car)
+    local drive = CaptureDriveSettings()
 
     for _, preset in ipairs(State.presets) do
         if preset.carId == carId and string.lower(preset.name) == string.lower(name) then
             preset.values = values
+            preset.drive = drive
             preset.savedAt = os.time()
             preset.carName = identity.name
             preset.trim = identity.trim
@@ -2654,7 +3093,7 @@ local function SavePresetFromName(text)
             end
             RequestPresetRender()
             Notify(persisted and "success" or "info", string.format(
-                "Updated preset '%s' (%d properties)%s",
+                "Updated preset '%s' (%d properties + Drive)%s",
                 name,
                 CountPresetValues(preset),
                 persisted and "" or " · memory only"
@@ -2672,6 +3111,7 @@ local function SavePresetFromName(text)
         autoLoad = false,
         savedAt  = os.time(),
         values   = values,
+        drive    = drive,
     }
     table.insert(State.presets, preset)
     local persisted = WritePresetsFile()
@@ -2680,7 +3120,7 @@ local function SavePresetFromName(text)
     end
     RequestPresetRender()
     Notify(persisted and "success" or "info", string.format(
-        "Saved preset '%s' (%d properties)%s",
+        "Saved preset '%s' (%d properties + Drive)%s",
         name,
         CountPresetValues(preset),
         persisted and "" or " · memory only"
@@ -3126,6 +3566,773 @@ local function FindEntry(id)
     return nil
 end
 
+--=== builders ==============================================================
+
+local SPEED_FACTOR = 0.56818181818181812
+
+local function DrivenWheelDiameter()
+    local wheels = State.wheels
+    local tune = State.tune
+    if wheels == nil or tune == nil then
+        return nil
+    end
+    local diameter = 0
+    for _, wheel in ipairs(wheels:GetChildren()) do
+        if wheel:IsA("BasePart") then
+            local driven = tune.Config == "AWD"
+            if not driven then
+                local isFront = string.sub(wheel.Name, 1, 1) == "F"
+                driven = isFront == (tune.Config == "FWD")
+            end
+            if driven then
+                diameter = math.max(diameter, wheel.Size.X)
+            end
+        end
+    end
+    if diameter <= 0 then
+        return nil
+    end
+    return diameter
+end
+
+local function GearTopSpeed(ratios, finalDrive, finalMult, diameter, redline)
+    if type(ratios) ~= "table" or #ratios == 0 then
+        return 0
+    end
+    local topRatio = tonumber(ratios[#ratios])
+    if topRatio == nil or topRatio == 0 or finalDrive <= 0 or finalMult <= 0 then
+        return 0
+    end
+    local raw = diameter * math.pi * redline / 60
+    local geared = raw / topRatio / finalDrive
+    return math.floor(math.ceil(geared / finalMult) * SPEED_FACTOR)
+end
+
+local function OpenBuilderDialog(title, width, height)
+    if State.builderDialog ~= nil then
+        pcall(function()
+            State.builderDialog:Close()
+        end)
+        State.builderDialog = nil
+    end
+
+    local dialog
+    dialog = MonoUI.Dialog {
+        Title = title,
+        Width = width or 400,
+        Height = height or 420,
+        OnClose = function()
+            if State.builderDialog == dialog then
+                State.builderDialog = nil
+            end
+        end,
+    }
+    State.builderDialog = dialog
+    return dialog
+end
+
+local function OpenGearRatioBuilder()
+    local tune = State.tune
+    local wheels = State.wheels
+    if tune == nil or wheels == nil then
+        Notify("error", "Spawn a vehicle before opening the gear ratio builder")
+        return
+    end
+
+    local ratios = tune.Ratios
+    local reverseRatio = type(ratios) == "table" and tonumber(ratios[1]) or 0
+    local neutralRatio = type(ratios) == "table" and tonumber(ratios[2]) or 0
+    local forwardCount = type(ratios) == "table" and (#ratios - 2) or 0
+    local count = forwardCount >= 2 and forwardCount or 6
+    local firstRatio = type(ratios) == "table" and tonumber(ratios[3]) or 3.5
+    if forwardCount < 2 or firstRatio == nil or firstRatio <= 0 then
+        firstRatio = 3.5
+    end
+    local finalDrive = tonumber(tune.FinalDrive) or 3.5
+    local finalMult = tonumber(tune.FDMult) or 1
+    local redline = tonumber(tune.Redline) or 6000
+    local diameter = DrivenWheelDiameter() or 2.5
+    local currentTop = ComputeMaxSpeed()
+    local target = currentTop > 0 and currentTop or 200
+
+    local dialog = OpenBuilderDialog("GEAR RATIO BUILDER", 410, 510)
+    local content = dialog.Content
+    local order = 0
+    local function NextOrder()
+        order = order + 1
+        return order
+    end
+
+    local modeSelect = MonoUI.Select {
+        Parent  = content,
+        Caption = "Mode",
+        Options = { "Generate ratios", "Solve final drive" },
+        Value   = "Generate ratios",
+        Order   = NextOrder(),
+        ZIndex  = 47,
+    }
+
+    local function NumberRow(label, value, placeholder)
+        local row = MonoUI.Row(content, NextOrder(), 30)
+        MonoUI.Texted(row, {
+            Text     = label,
+            Size     = Theme.Type.Body,
+            Tint     = "Muted",
+            Bold     = false,
+            Size2    = UDim2.new(0.64, 0, 1, 0),
+            ZIndex   = 47,
+        })
+        return MonoUI.Input {
+            Parent          = row,
+            Name            = label,
+            Size            = UDim2.new(0.32, 0, 0, 24),
+            Position        = UDim2.new(0.68, 0, 0, 3),
+            Text            = tostring(value),
+            X               = Enum.TextXAlignment.Center,
+            NumbersOnly     = true,
+            SubmitOnEnter   = true,
+            PlaceholderText = placeholder,
+            ZIndex          = 47,
+        }
+    end
+
+    local targetInput = NumberRow("Target top speed (speedometer mph)", target, "mph")
+    local diameterInput = NumberRow("Driven tire diameter (studs)", string.format("%.4f", diameter), "studs")
+    local redlineInput = NumberRow("Engine redline (RPM)", redline, "RPM")
+    local countInput = NumberRow("Forward gear count", count, "gears")
+    local firstInput = NumberRow("First forward ratio", firstRatio, "ratio")
+    local finalInput = NumberRow("Final drive", finalDrive, "ratio")
+    local multInput = NumberRow("Final drive mult", finalMult, "mult")
+
+    local status = MonoUI.Texted(content, {
+        Text        = "Set a target and press Build.",
+        Size        = Theme.Type.Support,
+        Tint        = "Muted",
+        Bold        = false,
+        Size2       = UDim2.new(1, 0, 0, 0),
+        ZIndex      = 47,
+    })
+    status.TextWrapped = true
+    status.TextYAlignment = Enum.TextYAlignment.Top
+    status.AutomaticSize = Enum.AutomaticSize.Y
+
+    local generated = nil
+    local actionRow = MonoUI.Row(content, NextOrder(), 30)
+    local actionCell = MonoUI.Columns(actionRow, 3, 6, 30)
+
+    local function SetStatus(text, error)
+        status.Text = text
+        status.TextColor3 = error and Color3.fromRGB(255, 128, 128) or Theme.Text
+    end
+
+    MonoUI.Button {
+        Parent  = actionRow,
+        Caption = "Build",
+        Size    = actionCell,
+        Order   = 1,
+        ZIndex  = 47,
+        OnClick = function()
+            local targetValue = tonumber(targetInput.Text)
+            local diameterValue = tonumber(diameterInput.Text)
+            local redlineValue = tonumber(redlineInput.Text)
+            local countValue = tonumber(countInput.Text)
+            local firstValue = tonumber(firstInput.Text)
+            local finalValue = tonumber(finalInput.Text)
+            local multValue = tonumber(multInput.Text)
+            local mode = modeSelect.Get() or "Generate ratios"
+
+            if targetValue == nil or targetValue <= 0 then
+                SetStatus("Target top speed must be a positive number.", true)
+                return
+            end
+            if diameterValue == nil or diameterValue <= 0 then
+                SetStatus("Driven tire diameter must be positive.", true)
+                return
+            end
+            if redlineValue == nil or redlineValue <= 0 then
+                SetStatus("Redline must be positive.", true)
+                return
+            end
+            if countValue == nil then
+                SetStatus("Gear count must be a number.", true)
+                return
+            end
+            countValue = math.floor(countValue)
+            if countValue < 2 or countValue > 12 then
+                SetStatus("Gear count must be between 2 and 12.", true)
+                return
+            end
+            if finalValue == nil or finalValue <= 0 then
+                SetStatus("Final drive must be positive.", true)
+                return
+            end
+            if multValue == nil or multValue <= 0 then
+                SetStatus("Final drive mult must be positive.", true)
+                return
+            end
+
+            local targetRaw = targetValue / SPEED_FACTOR
+            local base = diameterValue * math.pi * redlineValue / 60
+
+            if mode == "Solve final drive" then
+                local baseRatios = CopyValue(tune.Ratios)
+                local topRatio = type(baseRatios) == "table" and tonumber(baseRatios[#baseRatios]) or nil
+                if topRatio == nil or topRatio <= 0 then
+                    SetStatus("The current gear list has no usable top gear.", true)
+                    return
+                end
+                local solvedFinal = base / (targetRaw * topRatio * multValue)
+                if solvedFinal <= 0 or solvedFinal ~= solvedFinal then
+                    SetStatus("Those values produce an invalid final drive.", true)
+                    return
+                end
+                topRatio = topRatio
+                generated = {
+                    Ratios = baseRatios,
+                    FinalDrive = solvedFinal,
+                    FDMult = multValue,
+                }
+                local actual = GearTopSpeed(baseRatios, solvedFinal, multValue, diameterValue, redlineValue)
+                SetStatus(string.format(
+                    "Final drive: %.4f\nPredicted top speed: %d mph\nApply writes the final drive into the A-Chassis tune.",
+                    solvedFinal, actual
+                ), false)
+                return
+            end
+
+            if firstValue == nil or firstValue <= 0 then
+                SetStatus("First gear ratio must be positive.", true)
+                return
+            end
+            local topRatio = base / (targetRaw * finalValue * multValue)
+            if topRatio <= 0 or topRatio ~= topRatio or firstValue <= topRatio then
+                SetStatus("The first gear must be numerically larger than the calculated top gear.", true)
+                return
+            end
+            local step = (firstValue / topRatio) ^ (1 / (countValue - 1))
+            local generatedRatios = { reverseRatio or 0, neutralRatio or 0 }
+            for index = 1, countValue do
+                generatedRatios[#generatedRatios + 1] = firstValue / (step ^ (index - 1))
+            end
+            generatedRatios[#generatedRatios] = topRatio
+            generated = {
+                Ratios = generatedRatios,
+                FinalDrive = finalValue,
+                FDMult = multValue,
+            }
+            local labels = {}
+            for index = 3, #generatedRatios do
+                labels[#labels + 1] = FormatNumber(generatedRatios[index])
+            end
+            local actual = GearTopSpeed(generatedRatios, finalValue, multValue, diameterValue, redlineValue)
+            SetStatus(string.format(
+                "Reverse %.2f · neutral %.2f\nForward: %s\nPredicted top speed: %d mph\nApply writes the gear set into the A-Chassis tune.",
+                generatedRatios[1], generatedRatios[2], table.concat(labels, ", "), actual
+            ), false)
+        end,
+    }
+
+    MonoUI.Button {
+        Parent  = actionRow,
+        Caption = "Apply to tune",
+        Size    = actionCell,
+        Order   = 2,
+        ZIndex  = 47,
+        OnClick = function()
+            if generated == nil then
+                SetStatus("Press Build first, then apply the result.", true)
+                return
+            end
+            if State.tune == nil then
+                SetStatus("The car has no A-Chassis tune to write to.", true)
+                return
+            end
+            State.tune.Ratios = CopyValue(generated.Ratios)
+            State.tune.FinalDrive = generated.FinalDrive
+            State.tune.FDMult = generated.FDMult
+            local changed = 0
+            for _, entry in ipairs(State.entries) do
+                if entry.source == "Motor" and (entry.key == "Ratios" or entry.key == "FinalDrive" or entry.key == "FDMult") then
+                    entry.value = entry.getValue()
+                    if entry.widget ~= nil and entry.widget.Apply ~= nil then
+                        pcall(entry.widget.Apply, entry.value)
+                    end
+                    changed = changed + 1
+                end
+            end
+            RefreshDerivedEntries()
+            LogInfo(string.format("Gear ratio builder applied %d tune fields", changed))
+            Notify("success", "Gear ratios applied · exit and re-enter the vehicle")
+            dialog:Close()
+        end,
+    }
+
+    MonoUI.Button {
+        Parent  = actionRow,
+        Caption = "Close",
+        Size    = actionCell,
+        Order   = 3,
+        ZIndex  = 47,
+        OnClick = function()
+            dialog:Close()
+        end,
+    }
+end
+
+local function BuilderNumberRow(parent, order, label, value, placeholder)
+    local row = MonoUI.Row(parent, order, 30)
+    MonoUI.Texted(row, {
+        Text     = label,
+        Size     = Theme.Type.Body,
+        Tint     = "Muted",
+        Bold     = false,
+        Size2    = UDim2.new(0.64, 0, 1, 0),
+        ZIndex   = 47,
+    })
+    return MonoUI.Input {
+        Parent          = row,
+        Name            = label,
+        Size            = UDim2.new(0.32, 0, 0, 24),
+        Position        = UDim2.new(0.68, 0, 0, 3),
+        Text            = tostring(value),
+        X               = Enum.TextXAlignment.Center,
+        NumbersOnly     = true,
+        SubmitOnEnter   = true,
+        PlaceholderText = placeholder,
+        ZIndex          = 47,
+    }
+end
+
+local function ApplyFinalDriveToTune(finalDrive, finalMult)
+    if State.tune == nil then
+        return false, 0
+    end
+    State.tune.FinalDrive = finalDrive
+    State.tune.FDMult = finalMult
+    local changed = 0
+    for _, entry in ipairs(State.entries) do
+        if entry.source == "Motor" and (entry.key == "FinalDrive" or entry.key == "FDMult") then
+            entry.value = entry.getValue()
+            if entry.widget ~= nil and entry.widget.Apply ~= nil then
+                pcall(entry.widget.Apply, entry.value)
+            end
+            changed = changed + 1
+        end
+    end
+    RefreshDerivedEntries()
+    return true, changed
+end
+
+local function ApplyAccelerationProfile(horsepower, firstForward)
+    local tune = State.tune
+    if tune == nil then
+        return false
+    end
+
+    tune.Horsepower = horsepower
+    tune.WeightDist = 50
+    tune.CGHeight = 0.5
+    local ratios = tune.Ratios
+    if type(ratios) == "table" and #ratios >= 3 then
+        ratios[3] = firstForward
+    end
+
+    local function SetCarAttribute(key, value)
+        local entry = FindEntry("Car." .. key)
+        if entry ~= nil then
+            ApplyProperty(entry, value, true)
+        elseif State.car ~= nil then
+            State.car:SetAttribute(key, value)
+        end
+    end
+
+    local function SetWheelAttribute(key, value)
+        local entry = FindEntry("Wheels." .. key)
+        if entry ~= nil then
+            ApplyProperty(entry, value, true)
+        elseif State.wheels ~= nil then
+            State.wheels:SetAttribute(key, value)
+        end
+    end
+
+    SetCarAttribute("Dynamics_Drivetrain", "AWD")
+    SetCarAttribute("Dynamics_Traction", true)
+    SetCarAttribute("Dynamics_Antilock", true)
+    local compound = PickTireCompound("Racing Slick")
+    if compound ~= nil then
+        SetCarAttribute("Dynamics_FTireCompound", compound)
+        SetCarAttribute("Dynamics_RTireCompound", compound)
+    end
+    SetWheelAttribute("Friction_UseLocalValues", true)
+    SetWheelAttribute("Friction_DryRoad", 1)
+
+    for _, entry in ipairs(State.entries) do
+        if entry.source == "Motor" and (entry.key == "Horsepower" or entry.key == "Ratios" or entry.key == "WeightDist" or entry.key == "CGHeight") then
+            entry.value = entry.getValue()
+            if entry.widget ~= nil and entry.widget.Apply ~= nil then
+                pcall(entry.widget.Apply, entry.value)
+            end
+        end
+    end
+    RefreshDerivedEntries()
+    return true
+end
+
+local function OpenFinalDriveBuilder()
+    local tune = State.tune
+    if tune == nil then
+        Notify("error", "Spawn a vehicle before opening the final drive builder")
+        return
+    end
+
+    local finalDrive = tonumber(tune.FinalDrive) or 3.5
+    local finalMult = tonumber(tune.FDMult) or 1
+    local total = finalDrive * finalMult
+
+    local dialog = OpenBuilderDialog("FINAL DRIVE BUILDER", 400, 380)
+    local content = dialog.Content
+    local order = 0
+    local function NextOrder()
+        order = order + 1
+        return order
+    end
+
+    local axleInput = BuilderNumberRow(content, NextOrder(), "Axle ratio (FinalDrive)", finalDrive, "ratio")
+    local multInput = BuilderNumberRow(content, NextOrder(), "Multiplier (FDMult)", finalMult, "mult")
+    local totalInput = BuilderNumberRow(content, NextOrder(), "Total final drive", string.format("%.4f", total), "product")
+
+    local status = MonoUI.Texted(content, {
+        Text        = "Enter a total and axle ratio, then Build.",
+        Size        = Theme.Type.Support,
+        Tint        = "Muted",
+        Bold        = false,
+        Size2       = UDim2.new(1, 0, 0, 0),
+        ZIndex      = 47,
+    })
+    status.TextWrapped = true
+    status.TextYAlignment = Enum.TextYAlignment.Top
+    status.AutomaticSize = Enum.AutomaticSize.Y
+
+    local function SetStatus(text, error)
+        status.Text = text
+        status.TextColor3 = error and Color3.fromRGB(255, 128, 128) or Theme.Text
+    end
+
+    local actionRow = MonoUI.Row(content, NextOrder(), 30)
+    local actionCell = MonoUI.Columns(actionRow, 3, 6, 30)
+
+    MonoUI.Button {
+        Parent  = actionRow,
+        Caption = "Build",
+        Size    = actionCell,
+        Order   = 1,
+        ZIndex  = 47,
+        OnClick = function()
+            local axle = tonumber(axleInput.Text)
+            local targetTotal = tonumber(totalInput.Text)
+            if axle == nil or axle <= 0 then
+                SetStatus("Axle ratio must be positive.", true)
+                return
+            end
+            if targetTotal == nil or targetTotal <= 0 then
+                SetStatus("Total final drive must be positive.", true)
+                return
+            end
+            local mult = targetTotal / axle
+            if mult <= 0 or mult ~= mult then
+                SetStatus("Those values produce an invalid multiplier.", true)
+                return
+            end
+            multInput.Text = string.format("%.6f", mult)
+            local ratios = tune.Ratios
+            local diameter = DrivenWheelDiameter() or 2.5
+            local redline = tonumber(tune.Redline) or 6000
+            local actual = GearTopSpeed(ratios, axle, mult, diameter, redline)
+            SetStatus(string.format(
+                "FDMult = %.6f\nFinal drive product = %.4f\nPredicted top speed = %d mph",
+                mult, axle * mult, actual
+            ), false)
+        end,
+    }
+
+    MonoUI.Button {
+        Parent  = actionRow,
+        Caption = "Apply to tune",
+        Size    = actionCell,
+        Order   = 2,
+        ZIndex  = 47,
+        OnClick = function()
+            local axle = tonumber(axleInput.Text)
+            local mult = tonumber(multInput.Text)
+            if axle == nil or axle <= 0 or mult == nil or mult <= 0 then
+                SetStatus("FinalDrive and FDMult must both be positive.", true)
+                return
+            end
+            local ok, changed = ApplyFinalDriveToTune(axle, mult)
+            if not ok then
+                SetStatus("The car has no A-Chassis tune to write to.", true)
+                return
+            end
+            LogInfo(string.format("Final drive builder applied %d tune fields", changed))
+            Notify("success", "Final drive applied · exit and re-enter the vehicle")
+            dialog:Close()
+        end,
+    }
+
+    MonoUI.Button {
+        Parent  = actionRow,
+        Caption = "Close",
+        Size    = actionCell,
+        Order   = 3,
+        ZIndex  = 47,
+        OnClick = function()
+            dialog:Close()
+        end,
+    }
+end
+
+local function OpenMaxSpeedBuilder()
+    local tune = State.tune
+    if tune == nil then
+        Notify("error", "Spawn a vehicle before opening the max speed builder")
+        return
+    end
+
+    local ratios = tune.Ratios
+    local topRatio = type(ratios) == "table" and tonumber(ratios[#ratios]) or nil
+    if topRatio == nil or topRatio <= 0 then
+        Notify("error", "The car's gear table has no usable top gear")
+        return
+    end
+
+    local diameter = DrivenWheelDiameter() or 2.5
+    local redline = tonumber(tune.Redline) or 6000
+    local finalDrive = tonumber(tune.FinalDrive) or 3.5
+    local weight = tonumber(tune.Weight) or 3000
+    local horsepower = tonumber(tune.Horsepower) or 500
+    local currentAccel = ComputeAcceleration()
+    local accelTarget = currentAccel > 0 and currentAccel or 5
+    local firstForward = type(ratios) == "table" and tonumber(ratios[3]) or 3.5
+    if firstForward == nil or firstForward <= 0 then
+        firstForward = 3.5
+    end
+    firstForward = math.max(firstForward, 4.5)
+    local efficiency = 12.5
+    local gripFloor = 1.0
+    local currentTop = ComputeMaxSpeed()
+    local target = currentTop > 0 and currentTop or 200
+
+    local dialog = OpenBuilderDialog("MAX SPEED BUILDER", 410, 620)
+    local content = dialog.Content
+    local order = 0
+    local function NextOrder()
+        order = order + 1
+        return order
+    end
+
+    local targetInput = BuilderNumberRow(content, NextOrder(), "Target top speed (speedometer mph)", target, "mph")
+    local diameterInput = BuilderNumberRow(content, NextOrder(), "Driven tire diameter (studs)", string.format("%.4f", diameter), "studs")
+    local redlineInput = BuilderNumberRow(content, NextOrder(), "Engine redline (RPM)", redline, "RPM")
+    local axleInput = BuilderNumberRow(content, NextOrder(), "Axle ratio (FinalDrive)", finalDrive, "ratio")
+
+    MonoUI.Texted(content, {
+        Text        = string.format("Current top gear ratio: %s", FormatNumber(topRatio)),
+        Size        = Theme.Type.Support,
+        Tint        = "Muted",
+        Bold        = false,
+        Size2       = UDim2.new(1, 0, 0, 16),
+        LayoutOrder = NextOrder(),
+        ZIndex      = 47,
+    })
+
+    MonoUI.Heading(content, NextOrder(), "Acceleration (power-limited)")
+    local accelTargetInput = BuilderNumberRow(content, NextOrder(), "Target 0-60 (seconds)", accelTarget, "s")
+    local weightInput = BuilderNumberRow(content, NextOrder(), "Weight (lb)", weight, "lb")
+    local horsepowerInput = BuilderNumberRow(content, NextOrder(), "Horsepower", horsepower, "hp")
+    local firstForwardInput = BuilderNumberRow(content, NextOrder(), "First forward ratio", firstForward, "ratio")
+    local efficiencyInput = BuilderNumberRow(content, NextOrder(), "Real-world efficiency (%)", efficiency, "%")
+    local gripFloorInput = BuilderNumberRow(content, NextOrder(), "Grip-limited 0-60 floor (s)", gripFloor, "s")
+    local generatedHorsepower = nil
+
+    local status = MonoUI.Texted(content, {
+        Text        = "Enter a target, then Build.",
+        Size        = Theme.Type.Support,
+        Tint        = "Muted",
+        Bold        = false,
+        Size2       = UDim2.new(1, 0, 0, 0),
+        ZIndex      = 47,
+    })
+    status.TextWrapped = true
+    status.TextYAlignment = Enum.TextYAlignment.Top
+    status.AutomaticSize = Enum.AutomaticSize.Y
+
+    local function SetStatus(text, error)
+        status.Text = text
+        status.TextColor3 = error and Color3.fromRGB(255, 128, 128) or Theme.Text
+    end
+
+    local generated = nil
+    local actionRow = MonoUI.Row(content, NextOrder(), 30)
+    local actionCell = MonoUI.Columns(actionRow, 3, 6, 30)
+
+    MonoUI.Button {
+        Parent  = actionRow,
+        Caption = "Build",
+        Size    = actionCell,
+        Order   = 1,
+        ZIndex  = 47,
+        OnClick = function()
+            local targetValue = tonumber(targetInput.Text)
+            local diameterValue = tonumber(diameterInput.Text)
+            local redlineValue = tonumber(redlineInput.Text)
+            local axleValue = tonumber(axleInput.Text)
+            if targetValue == nil or targetValue <= 0 then
+                SetStatus("Target top speed must be positive.", true)
+                return
+            end
+            if diameterValue == nil or diameterValue <= 0 then
+                SetStatus("Driven tire diameter must be positive.", true)
+                return
+            end
+            if redlineValue == nil or redlineValue <= 0 then
+                SetStatus("Redline must be positive.", true)
+                return
+            end
+            if axleValue == nil or axleValue <= 0 then
+                SetStatus("Axle ratio must be positive.", true)
+                return
+            end
+
+            local targetRaw = targetValue / SPEED_FACTOR
+            local raw = diameterValue * math.pi * redlineValue / 60
+            local product = raw / (targetRaw * topRatio)
+            local mult = product / axleValue
+            if product <= 0 or product ~= product or mult <= 0 or mult ~= mult then
+                SetStatus("Those values produce an invalid final drive.", true)
+                return
+            end
+            generated = {
+                FinalDrive = axleValue,
+                FDMult = mult,
+            }
+            local actual = GearTopSpeed(ratios, axleValue, mult, diameterValue, redlineValue)
+            SetStatus(string.format(
+                "Required final drive product: %.4f\nFDMult: %.6f\nPredicted top speed: %d mph",
+                product, mult, actual
+            ), false)
+        end,
+    }
+
+    MonoUI.Button {
+        Parent  = actionRow,
+        Caption = "Apply to tune",
+        Size    = actionCell,
+        Order   = 2,
+        ZIndex  = 47,
+        OnClick = function()
+            if generated == nil then
+                SetStatus("Press Build first, then apply the result.", true)
+                return
+            end
+            local ok, changed = ApplyFinalDriveToTune(generated.FinalDrive, generated.FDMult)
+            if not ok then
+                SetStatus("The car has no A-Chassis tune to write to.", true)
+                return
+            end
+            LogInfo(string.format("Max speed builder applied %d tune fields", changed))
+            Notify("success", "Max speed final drive applied · exit and re-enter the vehicle")
+            dialog:Close()
+        end,
+    }
+
+    MonoUI.Button {
+        Parent  = actionRow,
+        Caption = "Close",
+        Size    = actionCell,
+        Order   = 3,
+        ZIndex  = 47,
+        OnClick = function()
+            dialog:Close()
+        end,
+    }
+
+    local accelActionRow = MonoUI.Row(content, NextOrder(), 30)
+    local accelCell = MonoUI.Columns(accelActionRow, 2, 6, 30)
+    MonoUI.Button {
+        Parent  = accelActionRow,
+        Caption = "Build acceleration",
+        Size    = accelCell,
+        Order   = 1,
+        ZIndex  = 47,
+        OnClick = function()
+            local targetSeconds = tonumber(accelTargetInput.Text)
+            local weightValue = tonumber(weightInput.Text)
+            local horsepowerValue = tonumber(horsepowerInput.Text)
+            local efficiencyValue = tonumber(efficiencyInput.Text)
+            local floorValue = tonumber(gripFloorInput.Text)
+            if targetSeconds == nil or targetSeconds <= 0 then
+                SetStatus("Target 0-60 must be positive.", true)
+                return
+            end
+            if weightValue == nil or weightValue <= 0 then
+                SetStatus("Weight must be positive.", true)
+                return
+            end
+            if horsepowerValue == nil or horsepowerValue <= 0 then
+                SetStatus("Horsepower must be positive.", true)
+                return
+            end
+            if efficiencyValue == nil or efficiencyValue <= 0 or efficiencyValue > 100 then
+                SetStatus("Efficiency must be between 0 and 100 percent.", true)
+                return
+            end
+            if floorValue == nil or floorValue < 0 then
+                SetStatus("Grip floor must be zero or positive.", true)
+                return
+            end
+            local mass = weightValue * 0.45359237
+            local targetSpeed = 60 * 0.44704
+            local effectiveTarget = math.max(targetSeconds, floorValue)
+            local efficiencyFactor = efficiencyValue / 100
+            local ideal = 0.5 * mass * targetSpeed * targetSpeed / (horsepowerValue * 745.699872)
+            local required = 0.5 * mass * targetSpeed * targetSpeed / effectiveTarget / efficiencyFactor / 745.699872
+            generatedHorsepower = math.max(math.ceil(required), math.ceil(horsepowerValue))
+            local floorNote = ""
+            if targetSeconds < floorValue then
+                floorNote = string.format("\nTarget is below the grip floor; expect about %.2f s.", floorValue)
+            end
+            SetStatus(string.format(
+                "Ideal 0-60 at %.0f hp: %.2f s\nEffective target: %.2f s (floor %.2f s) · efficiency %.1f%%\nRequired horsepower: %.0f hp (current HP kept if higher)%s\nApply acceleration also sets first gear, AWD/TCS/ABS, track tires, friction, weight distribution and CG.",
+                horsepowerValue, ideal, effectiveTarget, floorValue, efficiencyValue, generatedHorsepower, floorNote
+            ), false)
+        end,
+    }
+    MonoUI.Button {
+        Parent  = accelActionRow,
+        Caption = "Apply acceleration",
+        Size    = accelCell,
+        Order   = 2,
+        ZIndex  = 47,
+        OnClick = function()
+            if generatedHorsepower == nil then
+                SetStatus("Press Build acceleration first.", true)
+                return
+            end
+            local firstForwardValue = tonumber(firstForwardInput.Text)
+            if firstForwardValue == nil or firstForwardValue <= 0 then
+                SetStatus("First forward ratio must be positive.", true)
+                return
+            end
+            if ApplyAccelerationProfile(generatedHorsepower, firstForwardValue) ~= true then
+                SetStatus("The car has no A-Chassis tune to write to.", true)
+                return
+            end
+            LogInfo(string.format("Acceleration profile: %d hp, first ratio %.3f", generatedHorsepower, firstForwardValue))
+            Notify("success", "Acceleration profile applied · exit and re-enter the vehicle")
+        end,
+    }
+end
+
 --=== high-speed downforce ==================================================
 
 local function StopDownforce()
@@ -3213,7 +4420,7 @@ local function StartDownforce()
             Downforce.Car = seat
         end
 
-        local speedMph = seat.AssemblyLinearVelocity.Magnitude * 2.236936
+        local speedMph = SpeedometerMph(seat.AssemblyLinearVelocity)
         local pressure = math.clamp((speedMph / 320) ^ 2, 0, 2.5)
         local downforce = 0
         if speedMph >= 70 then
@@ -3439,7 +4646,7 @@ local function StartWheelLock()
             WheelLock.Car = car
         end
 
-        local speedMph = seat.AssemblyLinearVelocity.Magnitude * 2.236936
+        local speedMph = SpeedometerMph(seat.AssemblyLinearVelocity)
         if WheelLock.Cooldown > 0 then
             WheelLock.Cooldown = math.max(0, WheelLock.Cooldown - deltaTime)
         end
@@ -3474,6 +4681,420 @@ local function SetWheelLock(enabled)
     end
     if WheelLock.Switch ~= nil then
         WheelLock.Switch.Set(enabled)
+    end
+end
+
+--=== boost =================================================================
+
+local function FormatBoostAxes(axes)
+    local names = {}
+    for _, axis in ipairs(BOOST_AXIS_OPTIONS) do
+        if axes[axis] then
+            names[#names + 1] = axis
+        end
+    end
+    if #names == 0 then
+        return "None"
+    end
+    return table.concat(names, ", ")
+end
+
+local function BoostAxesDirection(seat, velocity, axes)
+    local unit = velocity.Magnitude > 0.001 and velocity.Unit or Vector3.zero
+    local direction = Vector3.new(
+        axes.X and unit.X or 0,
+        axes.Y and unit.Y or 0,
+        axes.Z and unit.Z or 0
+    )
+    if seat ~= nil then
+        local cframe = seat.CFrame
+        if axes.Forward then
+            direction = direction + cframe.LookVector
+        end
+        if axes.Backward then
+            direction = direction - cframe.LookVector
+        end
+        if axes.Right then
+            direction = direction + cframe.RightVector
+        end
+        if axes.Left then
+            direction = direction - cframe.RightVector
+        end
+    end
+    if direction.Magnitude < 0.001 then
+        return nil
+    end
+    return direction.Unit
+end
+
+local function UpdateBoostAxisStatus()
+    if Boost.AxisStatus ~= nil then
+        Boost.AxisStatus.Text = "Selected: " .. FormatBoostAxes(Boost.Axes)
+    end
+end
+
+local function SetAllBoostAxes(selected)
+    for _, axis in ipairs(BOOST_AXIS_OPTIONS) do
+        Boost.Axes[axis] = selected
+    end
+    for _, refresh in ipairs(Boost.AxisRefreshers) do
+        refresh()
+    end
+    UpdateBoostAxisStatus()
+    SaveDriveConfigSoon()
+end
+
+local function StopBoost(reason)
+    if not Boost.Active then
+        return
+    end
+    Boost.Active = false
+    if Boost.Connection ~= nil then
+        pcall(function()
+            Boost.Connection:Disconnect()
+        end)
+        Boost.Connection = nil
+    end
+    Boost.Car = nil
+    if reason ~= nil then
+        Notify("info", reason)
+    end
+end
+
+local function StepBoost(deltaTime)
+    if not Boost.Active then
+        return
+    end
+    if State.window == nil
+        or State.window.plate == nil
+        or State.window.plate.Parent == nil
+    then
+        StopBoost(nil)
+        return
+    end
+    local car = State.car
+    if car == nil or car ~= Boost.Car then
+        StopBoost(nil)
+        return
+    end
+    local seat = car:FindFirstChild("DriveSeat")
+    if seat == nil then
+        StopBoost(nil)
+        return
+    end
+
+    local velocity = seat.AssemblyLinearVelocity
+    local speedMph = SpeedometerMph(velocity)
+    if speedMph >= Boost.MaxSpeedMph then
+        StopBoost("Boost stopped at the maximum speed")
+        return
+    end
+    local direction = BoostAxesDirection(seat, velocity, Boost.ActiveAxes)
+    if direction == nil then
+        StopBoost(nil)
+        return
+    end
+    local rate = Boost.Strength / math.max(Boost.Duration, 0.05)
+    local remaining = math.max(0, (Boost.MaxSpeedMph - speedMph) / SPEEDOMETER_MPH_PER_STUD)
+    local added = math.min(rate * deltaTime, remaining)
+    if added > 0 then
+        seat.AssemblyLinearVelocity = velocity + direction * added
+    end
+    Boost.Elapsed = Boost.Elapsed + deltaTime
+    if Boost.Elapsed >= Boost.Duration then
+        StopBoost("Boost finished")
+    end
+end
+
+local function StartBoost()
+    if Boost.Active then
+        Notify("info", "Boost is already running")
+        return
+    end
+    if Fly.Active then
+        Notify("error", "Turn Fly off before boosting")
+        return
+    end
+    local car = State.car
+    local seat = car and car:FindFirstChild("DriveSeat")
+    if seat == nil then
+        Notify("error", "Spawn a vehicle before boosting")
+        return
+    end
+    local velocity = seat.AssemblyLinearVelocity
+    local speedMph = SpeedometerMph(velocity)
+    if speedMph >= Boost.MaxSpeedMph then
+        Notify("info", string.format("Already at the %.0f mph boost limit", Boost.MaxSpeedMph))
+        return
+    end
+    local activeAxes = {}
+    local axisCount = 0
+    for _, axis in ipairs(BOOST_AXIS_OPTIONS) do
+        if Boost.Axes[axis] then
+            activeAxes[axis] = true
+            axisCount = axisCount + 1
+        end
+    end
+    if axisCount == 0 then
+        Notify("error", "Select at least one boost axis")
+        return
+    end
+    local hasCarDirection = activeAxes.Forward or activeAxes.Backward or activeAxes.Right or activeAxes.Left
+    local direction = BoostAxesDirection(seat, velocity, activeAxes)
+    if direction == nil then
+        if hasCarDirection then
+            Notify("error", "The selected boost axes cancel out")
+        else
+            Notify("error", "The car has to be moving to boost along velocity components")
+        end
+        return
+    end
+    Boost.Car = car
+    Boost.ActiveAxes = activeAxes
+    Boost.ActiveLabel = FormatBoostAxes(activeAxes)
+    Boost.Elapsed = 0
+    Boost.Active = true
+    Boost.Connection = RunService.PreSimulation:Connect(StepBoost)
+    Notify("success", string.format(
+        "Boost: +%.1f studs/s over %.2fs along %s (max %.0f mph)",
+        Boost.Strength,
+        Boost.Duration,
+        Boost.ActiveLabel,
+        Boost.MaxSpeedMph
+    ))
+end
+
+--=== fly ===================================================================
+
+local StepFly
+
+local function FlyInputBegan(input)
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then
+        return
+    end
+    if UserInputService:GetFocusedTextBox() ~= nil then
+        return
+    end
+    local code = input.KeyCode
+    if code == Enum.KeyCode.W then
+        Fly.Keys.W = true
+    elseif code == Enum.KeyCode.A then
+        Fly.Keys.A = true
+    elseif code == Enum.KeyCode.S then
+        Fly.Keys.S = true
+    elseif code == Enum.KeyCode.D then
+        Fly.Keys.D = true
+    end
+end
+
+local function FlyInputEnded(input)
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then
+        return
+    end
+    local code = input.KeyCode
+    if code == Enum.KeyCode.W then
+        Fly.Keys.W = false
+    elseif code == Enum.KeyCode.A then
+        Fly.Keys.A = false
+    elseif code == Enum.KeyCode.S then
+        Fly.Keys.S = false
+    elseif code == Enum.KeyCode.D then
+        Fly.Keys.D = false
+    end
+end
+
+local function SetFlyMode(mode)
+    if mode ~= "CFrame" and mode ~= "Velocity" then
+        return
+    end
+    Fly.Mode = mode
+    if Fly.Active and Fly.Seat ~= nil and Fly.Seat.Parent ~= nil then
+        Fly.Seat.Anchored = mode == "CFrame"
+    end
+    Notify("info", "Fly movement: " .. mode)
+end
+
+local function SetFly(enabled)
+    if enabled == Fly.Active then
+        if Fly.Switch ~= nil then
+            Fly.Switch.Set(Fly.Active)
+        end
+        return
+    end
+
+    if enabled then
+        local car = State.car
+        local seat = car and car:FindFirstChild("DriveSeat")
+        if seat == nil then
+            Notify("error", "Spawn a vehicle before flying")
+            if Fly.Switch ~= nil then
+                Fly.Switch.Set(false)
+            end
+            return
+        end
+        if Boost.Active then
+            StopBoost(nil)
+        end
+        Fly.Active = true
+        Fly.Car = car
+        Fly.Seat = seat
+        Fly.OriginalAnchored = seat.Anchored
+        Fly.Keys = { W = false, A = false, S = false, D = false }
+        seat.Anchored = Fly.Mode == "CFrame"
+        pcall(function()
+            seat.AssemblyLinearVelocity = Vector3.zero
+            seat.AssemblyAngularVelocity = Vector3.zero
+        end)
+        Fly.Connection = RunService.PreSimulation:Connect(function(deltaTime)
+            StepFly(deltaTime)
+        end)
+        table.insert(Fly.KeyConnections, UserInputService.InputBegan:Connect(FlyInputBegan))
+        table.insert(Fly.KeyConnections, UserInputService.InputEnded:Connect(FlyInputEnded))
+        if Fly.Switch ~= nil then
+            Fly.Switch.Set(true)
+        end
+        Notify("success", string.format("Fly enabled (%s%s)", Fly.Mode, Fly.Lerp and ", lerp" or ""))
+        return
+    end
+
+    Fly.Active = false
+    if Fly.Connection ~= nil then
+        pcall(function()
+            Fly.Connection:Disconnect()
+        end)
+        Fly.Connection = nil
+    end
+    for _, connection in ipairs(Fly.KeyConnections) do
+        pcall(function()
+            connection:Disconnect()
+        end)
+    end
+    Fly.KeyConnections = {}
+    Fly.Keys = { W = false, A = false, S = false, D = false }
+    local seat = Fly.Seat
+    if seat ~= nil and seat.Parent ~= nil then
+        seat.Anchored = Fly.OriginalAnchored
+        pcall(function()
+            seat.AssemblyLinearVelocity = Vector3.zero
+            seat.AssemblyAngularVelocity = Vector3.zero
+        end)
+    end
+    Fly.Seat = nil
+    Fly.Car = nil
+    if Fly.Switch ~= nil then
+        Fly.Switch.Set(false)
+    end
+    Notify("info", "Fly disabled")
+end
+
+StepFly = function(deltaTime)
+    if not Fly.Active then
+        return
+    end
+    if State.window == nil
+        or State.window.plate == nil
+        or State.window.plate.Parent == nil
+    then
+        SetFly(false)
+        return
+    end
+    local car = State.car
+    local seat = Fly.Seat
+    if car == nil or seat == nil or seat.Parent == nil or car ~= Fly.Car then
+        SetFly(false)
+        return
+    end
+    local camera = Workspace.CurrentCamera
+    if camera == nil then
+        return
+    end
+
+    local look = camera.CFrame.LookVector
+    local right = camera.CFrame.RightVector
+    local direction = Vector3.zero
+    if Fly.Keys.W then
+        direction = direction + look
+    end
+    if Fly.Keys.S then
+        direction = direction - look
+    end
+    if Fly.Keys.D then
+        direction = direction + right
+    end
+    if Fly.Keys.A then
+        direction = direction - right
+    end
+    if direction.Magnitude > 0 then
+        direction = direction.Unit
+    end
+
+    local maxSpeed = math.max(Fly.MaxSpeedMph, 0) / SPEEDOMETER_MPH_PER_STUD
+    local alpha = Fly.Lerp and (1 - math.exp(-Fly.LerpRate * deltaTime)) or 1
+    if Fly.Mode == "CFrame" then
+        if not seat.Anchored then
+            seat.Anchored = true
+        end
+        local current = seat.CFrame
+        local targetPosition = current.Position + direction * maxSpeed * deltaTime
+        local targetCFrame = CFrame.new(targetPosition) * camera.CFrame.Rotation
+        seat.CFrame = current:Lerp(targetCFrame, alpha)
+        return
+    end
+
+    if seat.Anchored then
+        seat.Anchored = false
+    end
+    local velocity = seat.AssemblyLinearVelocity
+    local targetVelocity = direction * maxSpeed
+    seat.AssemblyLinearVelocity = Fly.Lerp and velocity:Lerp(targetVelocity, alpha) or targetVelocity
+    pcall(function()
+        seat.AssemblyAngularVelocity = Vector3.zero
+    end)
+end
+
+local function KeybindMatches(bind, input)
+    if bind == "None" then
+        return false
+    end
+    local keyCode = Enum.KeyCode[bind]
+    return keyCode ~= nil and input.KeyCode == keyCode
+end
+
+local function TriggerDriveKeybind(bind)
+    if State.window == nil
+        or State.window.plate == nil
+        or State.window.plate.Parent == nil
+    then
+        return
+    end
+    if UserInputService:GetFocusedTextBox() ~= nil then
+        return
+    end
+    if Boost.Keybind == bind then
+        StartBoost()
+        return
+    end
+    if Fly.Keybind == bind then
+        SetFly(not Fly.Active)
+    end
+end
+
+local function HandleDriveKeybind(input)
+    if State.window == nil
+        or State.window.plate == nil
+        or State.window.plate.Parent == nil
+    then
+        return
+    end
+    if UserInputService:GetFocusedTextBox() ~= nil then
+        return
+    end
+    if KeybindMatches(Boost.Keybind, input) then
+        StartBoost()
+        return
+    end
+    if KeybindMatches(Fly.Keybind, input) then
+        SetFly(not Fly.Active)
     end
 end
 
@@ -3733,6 +5354,310 @@ function BindVehicle()
     end
 end
 
+--=== drive interface =======================================================
+
+local function CreateBoostAxisRow(parent, order, axis)
+    local row = MonoUI.Element {
+        ClassName              = "TextButton",
+        Parent                 = parent,
+        Name                   = axis,
+        AutoButtonColor        = false,
+        Text                   = "",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 24),
+        LayoutOrder            = order,
+        ZIndex                 = 2,
+    }
+    local box = MonoUI.Sticker(MonoUI.Element {
+        ClassName              = "Frame",
+        Parent                 = row,
+        Name                   = "Box",
+        BackgroundColor3       = Theme.Well,
+        BackgroundTransparency = Theme.WellAlpha,
+        Size                   = UDim2.fromOffset(14, 14),
+        Position               = UDim2.new(0, 2, 0.5, -7),
+        ZIndex                 = 3,
+    }, { Corner = 4, Stroke = "Line" })
+
+    local mark = MonoUI.Element {
+        ClassName        = "Frame",
+        Parent           = box,
+        Name             = "Mark",
+        BackgroundColor3 = Theme.Text,
+        BorderSizePixel  = 0,
+        Size             = UDim2.fromOffset(8, 8),
+        Position         = UDim2.new(0.5, -4, 0.5, -4),
+        Visible          = false,
+        ZIndex           = 4,
+    }
+    MonoUI.Element {
+        ClassName    = "UICorner",
+        Parent       = mark,
+        CornerRadius = UDim.new(0, 2),
+    }
+
+    MonoUI.Texted(row, {
+        Text     = axis,
+        Size     = Theme.Type.Body,
+        Tint     = "Text",
+        Bold     = false,
+        Position = UDim2.fromOffset(24, 0),
+        Size2    = UDim2.new(1, -28, 1, 0),
+        ZIndex   = 3,
+    })
+
+    local function Refresh()
+        local selected = Boost.Axes[axis] == true
+        mark.Visible = selected
+        row.BackgroundTransparency = selected and 0.94 or 1
+    end
+
+    row.MouseButton1Click:Connect(function()
+        Boost.Axes[axis] = not Boost.Axes[axis]
+        Refresh()
+        UpdateBoostAxisStatus()
+        SaveDriveConfigSoon()
+    end)
+
+    Refresh()
+    table.insert(Boost.AxisRefreshers, Refresh)
+end
+
+local function CreateDriveNumberRow(parent, order, label, value, onCommit)
+    local row = MonoUI.Row(parent, order, 34)
+    MonoUI.Texted(row, {
+        Text     = label,
+        Size     = Theme.Type.Body,
+        Tint     = "Muted",
+        Size2    = UDim2.new(0.56, 0, 1, 0),
+    })
+    local input = MonoUI.Input {
+        Parent   = row,
+        Size     = UDim2.new(0.40, 0, 0, 26),
+        Position = UDim2.new(0.60, 0, 0, 4),
+        Text     = tostring(value),
+        X        = Enum.TextXAlignment.Center,
+        NumbersOnly = true,
+        SubmitOnEnter = true,
+        OnSubmit = function(text)
+            local number = tonumber(text)
+            if number ~= nil then
+                onCommit(number)
+            end
+        end,
+    }
+    return input
+end
+
+local function CreateDriveInterface(tab)
+    local content = tab.content
+    local order = 0
+    local function NextOrder()
+        order = order + 1
+        return order
+    end
+
+    MonoUI.Heading(content, NextOrder(), "Boost")
+    Boost.StrengthInput = CreateDriveNumberRow(content, NextOrder(), "Strength (studs/s)", Boost.Strength, function(value)
+        if value <= 0 then
+            Notify("error", "Boost strength must be positive")
+            return
+        end
+        Boost.Strength = value
+        SaveDriveConfigSoon()
+        Notify("success", string.format("Boost strength: %.1f", value))
+    end)
+    Boost.MaxSpeedInput = CreateDriveNumberRow(content, NextOrder(), "Max speed (speedometer mph)", Boost.MaxSpeedMph, function(value)
+        if value <= 0 then
+            Notify("error", "Boost max speed must be positive")
+            return
+        end
+        Boost.MaxSpeedMph = value
+        SaveDriveConfigSoon()
+        Notify("success", string.format("Boost max speed: %.0f mph", value))
+    end)
+    Boost.DurationInput = CreateDriveNumberRow(content, NextOrder(), "Duration (s)", Boost.Duration, function(value)
+        if value <= 0 then
+            Notify("error", "Boost duration must be positive")
+            return
+        end
+        Boost.Duration = value
+        SaveDriveConfigSoon()
+        Notify("success", string.format("Boost duration: %.2fs", value))
+    end)
+    MonoUI.Button {
+        Parent  = content,
+        Caption = "Boost Axes",
+        Order   = NextOrder(),
+        OnClick = function()
+            Boost.AxisOpen = not Boost.AxisOpen
+            Boost.AxisPanel.Visible = Boost.AxisOpen
+            Boost.AxisPanel.Size = UDim2.new(1, 0, 0, Boost.AxisOpen and 242 or 0)
+        end,
+    }
+    Boost.AxisStatus = MonoUI.Texted(content, {
+        Text        = "Selected: " .. FormatBoostAxes(Boost.Axes),
+        Size        = Theme.Type.Support,
+        Tint        = "Muted",
+        Bold        = false,
+        Size2       = UDim2.new(1, 0, 0, 16),
+        LayoutOrder = NextOrder(),
+    })
+    local axisPanel = MonoUI.Element {
+        ClassName              = "Frame",
+        Parent                 = content,
+        Name                   = "BoostAxes",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 0),
+        LayoutOrder            = NextOrder(),
+        Visible                = false,
+    }
+    MonoUI.Element {
+        ClassName = "UIListLayout",
+        Parent    = axisPanel,
+        Padding   = UDim.new(0, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }
+    Boost.AxisPanel = axisPanel
+    local axisOrder = 0
+    local function NextAxisOrder()
+        axisOrder = axisOrder + 1
+        return axisOrder
+    end
+    local axisSelectRow = MonoUI.Row(axisPanel, NextAxisOrder(), 28)
+    local axisSelectCell = MonoUI.Columns(axisSelectRow, 2, 6, 26)
+    MonoUI.Button {
+        Parent  = axisSelectRow,
+        Caption = "Select All",
+        Size    = axisSelectCell,
+        Order   = 1,
+        OnClick = function()
+            SetAllBoostAxes(true)
+        end,
+    }
+    MonoUI.Button {
+        Parent  = axisSelectRow,
+        Caption = "Unselect All",
+        Size    = axisSelectCell,
+        Order   = 2,
+        OnClick = function()
+            SetAllBoostAxes(false)
+        end,
+    }
+    MonoUI.Heading(axisPanel, NextAxisOrder(), "Boost axes")
+    local axisScroller = MonoUI.Element {
+        ClassName              = "ScrollingFrame",
+        Parent                 = axisPanel,
+        Name                   = "AxisList",
+        BackgroundTransparency = 1,
+        BorderSizePixel        = 0,
+        ScrollBarThickness     = 4,
+        Size                   = UDim2.new(1, 0, 0, 180),
+        CanvasSize             = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize    = Enum.AutomaticSize.Y,
+        LayoutOrder            = NextAxisOrder(),
+        ZIndex                 = 2,
+    }
+    MonoUI.Element {
+        ClassName = "UIListLayout",
+        Parent    = axisScroller,
+        Padding   = UDim.new(0, 2),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }
+    for axisIndex, axis in ipairs(BOOST_AXIS_OPTIONS) do
+        CreateBoostAxisRow(axisScroller, axisIndex, axis)
+    end
+    Boost.KeySelect = MonoUI.Select {
+        Parent   = content,
+        Caption  = "Boost Key",
+        Options  = KEYBIND_OPTIONS,
+        Value    = Boost.Keybind,
+        Order    = NextOrder(),
+        OnSelect = function(option)
+            Boost.Keybind = option
+            SaveDriveConfigSoon()
+            Notify("info", "Boost key: " .. option)
+        end,
+    }
+    MonoUI.Button {
+        Parent  = content,
+        Caption = "Boost",
+        Order   = NextOrder(),
+        OnClick = function()
+            StartBoost()
+        end,
+    }
+    MonoUI.Texted(content, {
+        Text        = "Adds Strength along the selected velocity components and car directions; stops at Max speed.",
+        Size        = Theme.Type.Support,
+        Tint        = "Muted",
+        Bold        = false,
+        Size2       = UDim2.new(1, 0, 0, 16),
+        LayoutOrder = NextOrder(),
+    })
+
+    MonoUI.Heading(content, NextOrder(), "Fly")
+    Fly.Switch = MonoUI.Switch {
+        Parent   = content,
+        Caption  = "Enable Fly",
+        Value    = false,
+        Order    = NextOrder(),
+        OnChange = function(value)
+            SetFly(value)
+        end,
+    }
+    Fly.ModeSelect = MonoUI.Select {
+        Parent   = content,
+        Caption  = "Movement",
+        Options  = { "CFrame", "Velocity" },
+        Value    = Fly.Mode,
+        Order    = NextOrder(),
+        OnSelect = function(option)
+            SetFlyMode(option)
+            SaveDriveConfigSoon()
+        end,
+    }
+    Fly.LerpSwitch = MonoUI.Switch {
+        Parent   = content,
+        Caption  = "Lerp Movement",
+        Value    = Fly.Lerp,
+        Order    = NextOrder(),
+        OnChange = function(value)
+            Fly.Lerp = value
+            SaveDriveConfigSoon()
+        end,
+    }
+    Fly.MaxSpeedInput = CreateDriveNumberRow(content, NextOrder(), "Max fly speed (speedometer mph)", Fly.MaxSpeedMph, function(value)
+        if value <= 0 then
+            Notify("error", "Fly speed must be positive")
+            return
+        end
+        Fly.MaxSpeedMph = value
+        SaveDriveConfigSoon()
+        Notify("success", string.format("Fly max speed: %.0f mph", value))
+    end)
+    Fly.KeySelect = MonoUI.Select {
+        Parent   = content,
+        Caption  = "Fly Key",
+        Options  = KEYBIND_OPTIONS,
+        Value    = Fly.Keybind,
+        Order    = NextOrder(),
+        OnSelect = function(option)
+            Fly.Keybind = option
+            SaveDriveConfigSoon()
+            Notify("info", "Fly key: " .. option)
+        end,
+    }
+    MonoUI.Texted(content, {
+        Text        = "W/A/S/D move relative to the camera; CFrame anchors the seat, Velocity keeps it physical.",
+        Size        = Theme.Type.Support,
+        Tint        = "Muted",
+        Bold        = false,
+        Size2       = UDim2.new(1, 0, 0, 16),
+        LayoutOrder = NextOrder(),
+    })
+end
+
 --=== interface =============================================================
 
 local function CreateInterface()
@@ -3742,6 +5667,7 @@ local function CreateInterface()
         Hint  = "RIGHT CONTROL TO HIDE",
     }
     local vehicleTab = window:CreateTab("Vehicle")
+    local driveTab = window:CreateTab("Drive")
     local presetsTab = window:CreateTab("Presets")
 
     State.window  = window
@@ -3784,24 +5710,34 @@ local function CreateInterface()
 
     local actionRow = MonoUI.Row(State.content, NextOrder(), 30)
     local actionCell = MonoUI.Columns(actionRow, 2, 6, 30)
-    MonoUI.Button {
-        Parent  = actionRow,
-        Caption = "Stabilize High Speed",
-        Size    = actionCell,
-        Order   = 1,
-        OnClick = function()
-            StabilizeHighSpeed()
-        end,
-    }
-    MonoUI.Button {
-        Parent  = actionRow,
-        Caption = "Refresh Values",
-        Size    = actionCell,
-        Order   = 2,
-        OnClick = function()
-            RefreshVehicleValues()
-        end,
-    }
+    local function CreateActionCell(order, caption, helpTitle, helpText, onClick)
+        local cell = MonoUI.Element {
+            ClassName             = "Frame",
+            Parent                = actionRow,
+            BackgroundTransparency = 1,
+            Size                  = actionCell,
+            LayoutOrder           = order,
+        }
+        MonoUI.Help {
+            Parent   = cell,
+            Position = UDim2.fromOffset(0, 7),
+            Title    = helpTitle,
+            Text     = helpText,
+        }
+        MonoUI.Button {
+            Parent   = cell,
+            Caption  = caption,
+            Size     = UDim2.new(1, -20, 0, 30),
+            Position = UDim2.fromOffset(20, 0),
+            OnClick  = onClick,
+        }
+    end
+    CreateActionCell(1, "Stabilize High Speed", "Stabilize High Speed", FEATURE_HELP.Stabilize, function()
+        StabilizeHighSpeed()
+    end)
+    CreateActionCell(2, "Refresh Values", "Refresh Values", FEATURE_HELP.Refresh, function()
+        RefreshVehicleValues()
+    end)
     MonoUI.Texted(State.content, {
         Text        = "AWD · TCS/ABS · suspension clamped to the game's limits · track tires · lower CG",
         Size        = Theme.Type.Support,
@@ -3810,9 +5746,43 @@ local function CreateInterface()
         Size2       = UDim2.new(1, 0, 0, 16),
         LayoutOrder = NextOrder(),
     })
+    MonoUI.Heading(State.content, NextOrder(), "Builders")
+    local function CreateBuilderRow(caption, helpKey, onClick)
+        local row = MonoUI.Row(State.content, NextOrder(), 30)
+        MonoUI.Help {
+            Parent   = row,
+            Position = UDim2.fromOffset(0, 7),
+            Title    = caption,
+            Text     = FEATURE_HELP[helpKey],
+        }
+        MonoUI.Button {
+            Parent   = row,
+            Caption  = caption,
+            Size     = UDim2.new(1, -20, 0, 30),
+            Position = UDim2.fromOffset(20, 0),
+            OnClick  = onClick,
+        }
+    end
+    CreateBuilderRow("Gear Ratio Builder", "GearRatioBuilder", function()
+        OpenGearRatioBuilder()
+    end)
+    CreateBuilderRow("Final Drive Builder", "FinalDriveBuilder", function()
+        OpenFinalDriveBuilder()
+    end)
+    CreateBuilderRow("Max Speed Builder", "MaxSpeedBuilder", function()
+        OpenMaxSpeedBuilder()
+    end)
     local downforceRow = MonoUI.Row(State.content, NextOrder(), 30)
+    MonoUI.Help {
+        Parent   = downforceRow,
+        Position = UDim2.fromOffset(0, 7),
+        Title    = "Downforce Assist",
+        Text     = FEATURE_HELP.Downforce,
+    }
     Downforce.Switch = MonoUI.Switch {
         Parent   = downforceRow,
+        Size     = UDim2.new(1, -20, 0, 30),
+        Position = UDim2.fromOffset(20, 0),
         Caption  = "Downforce Assist",
         Value    = false,
         OnChange = function(value)
@@ -3820,20 +5790,35 @@ local function CreateInterface()
         end,
     }
     local wheelLockRow = MonoUI.Row(State.content, NextOrder(), 30)
+    MonoUI.Help {
+        Parent   = wheelLockRow,
+        Position = UDim2.fromOffset(0, 7),
+        Title    = "Wheel Lock 300+",
+        Text     = FEATURE_HELP.WheelLock,
+    }
     WheelLock.Switch = MonoUI.Switch {
         Parent   = wheelLockRow,
+        Size     = UDim2.new(1, -20, 0, 30),
+        Position = UDim2.fromOffset(20, 0),
         Caption  = "Wheel Lock 300+",
         Value    = false,
         OnChange = function(value)
             SetWheelLock(value)
         end,
     }
-
     local panelButtonRow = MonoUI.Row(State.content, NextOrder(), 34)
+    MonoUI.Help {
+        Parent   = panelButtonRow,
+        Position = UDim2.fromOffset(0, 9),
+        Title    = "Save / Restore Properties",
+        Text     = FEATURE_HELP.SaveRestore,
+    }
     MonoUI.Button {
-        Parent  = panelButtonRow,
-        Caption = "Save / Restore Properties",
-        OnClick = function()
+        Parent   = panelButtonRow,
+        Caption  = "Save / Restore Properties",
+        Size     = UDim2.new(1, -20, 0, 30),
+        Position = UDim2.fromOffset(20, 2),
+        OnClick  = function()
             State.panelOpen = not State.panelOpen
             RenderSnapshotPanel()
             UpdateListHeight()
@@ -3896,12 +5881,25 @@ local function CreateInterface()
         Size                   = footerCell,
         LayoutOrder            = 1,
     }
+    local unloadCell = MonoUI.Element {
+        ClassName              = "Frame",
+        Parent                 = footerRow,
+        BackgroundTransparency = 1,
+        Size                   = footerCell,
+        LayoutOrder            = 2,
+    }
+    MonoUI.Help {
+        Parent   = unloadCell,
+        Position = UDim2.fromOffset(0, 9),
+        Title    = "Unload",
+        Text     = FEATURE_HELP.Unload,
+    }
     MonoUI.Button {
-        Parent  = footerRow,
-        Caption = "Unload",
-        Size    = footerCell,
-        Order   = 2,
-        OnClick = function()
+        Parent   = unloadCell,
+        Caption  = "Unload",
+        Size     = UDim2.new(1, -20, 0, 34),
+        Position = UDim2.fromOffset(20, 0),
+        OnClick  = function()
             Unload()
         end,
     }
@@ -3955,6 +5953,20 @@ local function CreateInterface()
         end
     end))
 
+    CreateDriveInterface(driveTab)
+    table.insert(State.globalConnections, UserInputService.InputBegan:Connect(HandleDriveKeybind))
+    if DriveMouse ~= nil then
+        if HasWheelForward then
+            table.insert(State.globalConnections, DriveMouse.WheelForward:Connect(function()
+                TriggerDriveKeybind("Wheel Forward")
+            end))
+        end
+        if HasWheelBackward then
+            table.insert(State.globalConnections, DriveMouse.WheelBackward:Connect(function()
+                TriggerDriveKeybind("Wheel Backward")
+            end))
+        end
+    end
     CreatePresetInterface(presetsTab)
     State.presetsTab = presetsTab
     if type(vehicleTab.Focus) == "function" then
@@ -3967,11 +5979,25 @@ end
 
 function Unload()
     LogInfo("Unloading the vehicle property editor")
+    pcall(function()
+        MonoUI:CloseDialogs()
+    end)
     State.pollToken = State.pollToken + 1
     SetDownforce(false)
     SetWheelLock(false)
+    StopBoost(nil)
+    SetFly(false)
     Downforce.Switch = nil
     WheelLock.Switch = nil
+    Fly.Switch = nil
+    Fly.ModeSelect = nil
+    Fly.LerpSwitch = nil
+    Boost.KeySelect = nil
+    Fly.KeySelect = nil
+    Boost.AxisPanel = nil
+    Boost.AxisStatus = nil
+    Boost.AxisRefreshers = {}
+    State.builderDialog = nil
     State.viewport = nil
     State.viewportDisplay = nil
     State.viewportCenter = nil
