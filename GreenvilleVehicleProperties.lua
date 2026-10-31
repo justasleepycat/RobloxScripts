@@ -515,7 +515,14 @@ end
 
 -- One frame callback, driven by the shared Interval Watchdog when it is available. The Watchdog keeps
 -- a single PreSimulation binding, catches callback failures and unregisters by name; RunService is
--- only the fallback for a client where the module could not be fetched.
+-- only the fallback for a client where the module could not be fetched. A 1/60 delay expresses a
+-- frame cadence; the Watchdog still caps the callback at once per frame.
+function GreenvilleZeroDelayInterval(name, callback)
+    -- The Watchdog rejects a zero delay (IsValidDelay requires > 0), so a literal zero-delay loop
+    -- uses the physics step directly. Every other frame callback still uses the shared Watchdog.
+    return RunService.PreSimulation:Connect(callback)
+end
+
 function GreenvilleFrameInterval(name, callback)
     local environment = _G
     if type(getgenv) == "function" then
@@ -528,13 +535,10 @@ function GreenvilleFrameInterval(name, callback)
     local watchdog = environment.IntervalWatchdog
     if type(watchdog) == "table" and type(watchdog.Every) == "function" then
         pcall(function()
-            watchdog.SetPhase("PreSimulation")
-        end)
-        pcall(function()
             watchdog.UnregisterInterval(name)
         end)
         local registered, accepted = pcall(function()
-            return watchdog.Every(name, 0.001, function(elapsed)
+            return watchdog.Every(name, 1 / 60, function(elapsed)
                 callback(elapsed)
             end, { Owner = "GreenvilleVehicleProperties", Immediate = true })
         end)
@@ -4977,6 +4981,13 @@ function Collision.LoadWatchdog()
     if type(Collision.Watchdog) ~= "table" or type(Collision.Watchdog.Every) ~= "function" then
         Collision.Watchdog = nil
         LogError("Interval Watchdog is unavailable; collision filters use PreSimulation only")
+    elseif type(Collision.Watchdog.SetPhase) == "function" then
+        -- The module's default pass is RenderStepped. Physics, measurement and collision state belong
+        -- on PreSimulation, so move the one shared pass there once instead of rebinding per interval.
+        pcall(function()
+            Collision.Watchdog.SetPhase("PreSimulation")
+        end)
+        LogInfo("Interval Watchdog phase set to PreSimulation")
     end
 end
 
@@ -5589,7 +5600,7 @@ local function SetFly(enabled)
             seat.AssemblyLinearVelocity = Vector3.zero
             seat.AssemblyAngularVelocity = Vector3.zero
         end)
-        Fly.Connection = GreenvilleFrameInterval("VehicleProperties.Fly", function(deltaTime)
+        Fly.Connection = GreenvilleZeroDelayInterval("VehicleProperties.Fly", function(deltaTime)
             StepFly(deltaTime)
         end)
         table.insert(Fly.KeyConnections, UserInputService.InputBegan:Connect(FlyInputBegan))
@@ -5879,10 +5890,10 @@ local function UpdateListHeight()
     end
     local height = State.listHeight
     if State.panelOpen then
-        height = math.max(180, height - SelectionListSize)
+        height = math.max(120, height - SelectionListSize)
     end
     if Collision.Open then
-        height = math.max(180, height - Collision.ListSize)
+        height = math.max(120, height - Collision.ListSize)
     end
     State.listFrame.Size = UDim2.new(1, 0, 0, height)
 end
@@ -5937,7 +5948,7 @@ function Collision.BuildList(content, nextOrder)
     if camera ~= nil then
         screenHeight = camera.ViewportSize.Y
     end
-    local listHeight = math.clamp(screenHeight * 0.36, 240, 460)
+    local listHeight = math.clamp(screenHeight - 900, 140, 260)
     State.listHeight = listHeight
 
     local listFrame = MonoUI.Element {

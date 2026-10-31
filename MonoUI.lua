@@ -1382,6 +1382,11 @@ local function Input(properties)
 end
 
 local function Button(properties)
+    -- Start in the same state a hover leave returns to. The default used to be WellAlpha,
+    -- which is denser than RowAlpha, so a button looked highlighted until the first leave.
+    local looks     = properties.Looks or RowLooks
+    local restAlpha = looks.Rest and looks.Rest.BackgroundTransparency or Theme.RowAlpha
+
     local button = Sticker(Element {
         ClassName       = "TextButton",
         Parent          = properties.Parent,
@@ -1392,7 +1397,7 @@ local function Button(properties)
         Text            = "",
         LayoutOrder     = properties.Order or 1,
         ZIndex          = properties.ZIndex or 2,
-    }, { Color = properties.Color or "Row", Alpha = properties.Alpha or Theme.WellAlpha, Corner = "RowRadius", Stroke = properties.Stroke or "Line", Glass = true })
+    }, { Color = properties.Color or "Row", Alpha = properties.Alpha or restAlpha, Corner = "RowRadius", Stroke = properties.Stroke or "Line", Glass = true })
 
     Texted(button, {
         Text   = string.upper(properties.Caption or properties.Text or "BUTTON"),
@@ -1406,7 +1411,7 @@ local function Button(properties)
     -- which is the one thing every glass control in this file does when it is touched. A button
     -- whose fill is not the usual glass - a solid pill - brings its own looks, or the default
     -- hover would fade it back out from under the caption.
-    Hoverable(button, properties.Looks or RowLooks)
+    Hoverable(button, looks)
 
     button.MouseButton1Click:Connect(function()
         if properties.OnClick then
