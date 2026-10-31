@@ -1,3 +1,158 @@
+--[[
+    Interval Watchdog
+    =================
+
+    One render-step pass that drives every named interval a script registers. Instead of
+    each feature spawning its own `while task.wait(x) do ... end` loop, or a RenderStepped
+    connection with a hand-rolled cooldown accumulator, features register a callback and the
+    watchdog runs whatever is due, once per frame, from a single binding.
+
+    What it buys over ad-hoc loops
+    ------------------------------
+      * One binding instead of N. A callback that throws is caught and reported once, not
+        once per frame, and every other interval keeps running.
+      * Drift-free periods: a 0.5s interval stays 0.5s instead of 0.5s plus one frame per
+        tick. After a stall (loading screen, minimised window) the missed ticks are skipped
+        rather than fired back to back.
+      * Deterministic order: intervals run in registration order, not pairs() order.
+      * A frame budget (FRAME_BUDGET) caps one pass at about 4ms; whatever is left stays due
+        and runs on the next frame, so one slow callback cannot eat the frame.
+      * Lifecycle: pause, resume, retime, retarget, inspect and unregister by name.
+
+    Loading
+    -------
+    The module is fetched from this repository and cached in getgenv(), so any number of
+    scripts can share one copy:
+
+        local WATCHDOG_URL = "https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Interval%20Watchdog.lua"
+
+        local Watchdog = getgenv().IntervalWatchdog
+
+        if not Watchdog then
+            local loaded, loadedWatchdog = pcall(function()
+                return loadstring(game:HttpGet(WATCHDOG_URL))()
+            end)
+
+            if not loaded then
+                error("[!] [Bootstrap] Failed to load the Interval Watchdog (" .. tostring(loadedWatchdog) .. ")")
+            end
+
+            Watchdog                   = loadedWatchdog
+            getgenv().IntervalWatchdog = Watchdog
+        end
+
+    raw.githubusercontent serves through a CDN with a five minute cache, so a push to this
+    file can take that long to reach a running client.
+
+    Usage
+    -----
+        Watchdog.Every("AutoFarm", 0.5, function(elapsedSeconds, intervalName)
+            -- runs every 0.5s; elapsedSeconds is real time since its previous run
+        end)
+
+        Watchdog.After("RestoreCamera", 0.2, function()
+            -- one-shot: dropped as soon as it has run once
+        end)
+
+        Watchdog.UnregisterInterval("AutoFarm")
+
+    Callbacks receive (elapsedSeconds, intervalName) and must not yield: the pass holds a
+    re-entrancy guard while a callback runs. Start long work with task.spawn instead.
+
+    Timing model
+    ------------
+      * Clocked with os.clock() (monotonic), not the deprecated tick().
+      * A delay of 0 runs the callback on every pass, exactly like a BindToRenderStep
+        callback bound to the same phase. Any positive delay fires at most once per frame.
+      * Late ticks are dropped, not squeezed in: if the next tick would already be in the
+        past, the interval is re-armed one whole delay from now.
+
+    Per-frame intervals
+    -------------------
+    A delay of 0 is legal and means "run on every pass", which is what you would get by
+    binding the callback to the render step yourself: it runs once per frame, in
+    registration order, inside the same pcall as every timed interval and never deferred by
+    the frame budget.
+
+        Watchdog.Every("Crosshair", 0, function()
+            -- every frame, like a BindToRenderStep callback
+        end)
+
+    After(name, 0, fn) therefore means "on the next frame", and SetDelay(name, 0) turns a
+    timed interval into a per-frame one. Per-frame intervals are exempt from the frame
+    budget, exactly like the callback they replace, so a slow per-frame callback pushes timed
+    work to the next frame rather than being skipped itself. The budget still guarantees that
+    at least one timed interval runs per pass, so a permanently slow per-frame callback
+    cannot starve them completely.
+
+    Phases
+    ------
+    The pass binds to the render step at Enum.RenderPriority.Last.Value by default, which
+    runs after Input / Camera / Character. RenderStepped stops firing when the client stops
+    rendering (a minimised window renders nothing), so work that polls state rather than
+    touches the camera should switch phase:
+
+        Watchdog.SetPhase("Heartbeat")      -- game loop, ticks while the client is alive
+        Watchdog.SetPhase("PreSimulation")
+        Watchdog.SetPhase("Render")         -- back to the default
+
+    State
+    -----
+    The interval map lives in getgenv().activeIntervals, next to a
+    getgenv().intervalWatchdogVersion marker, so a re-executed script adopts the intervals
+    already there instead of dropping them or double-binding the pass; missing fields are
+    filled in on load. Re-registering an existing name replaces its callback by default,
+    which is what makes a hot reload pick up the new closure. Pass { Replace = false } to
+    get the old "already exists" rejection instead.
+
+    Callbacks stay in that shared map until they are unregistered, and they keep the script
+    alive with them: Unload(true) or Clear() drops them, Unload() only unbinds the pass.
+    Unregister by name rather than calling Clear() from a script that shares the executor
+    with other scripts.
+
+    API
+    ---
+    Registration
+        Every / RegisterInterval(name, delay, callback, options?)   -> boolean
+        After(name, delay, callback, options?)                      -> boolean (one-shot)
+        UnregisterInterval(name)                                    -> boolean
+        UnregisterOwner(owner)                                      -> count
+        Clear()                                                     -> count
+
+    Control
+        SetDelay(name, delay)           SetCallback(name, callback)
+        Pause(name)                     Resume(name)
+        PauseAll()                      ResumeAll()                 -> count
+        Trigger(name)                   -- becomes due on the next frame
+
+    Inspection
+        IsRegistered(name)              -> boolean
+        GetInfo(name)                   -> { Name, Delay, Enabled, Once, Owner, Runs,
+                                            Errors, LastError, LastMs, NextIn } or nil
+        List()                          -> array of GetInfo() copies, registration order
+        Dump()                          -> List() plus one [i] line per interval
+
+    Lifecycle
+        SetPhase(phaseName)             -> boolean
+        Unload(clearIntervals?)         -- unbind, optionally drop every interval
+
+    options
+        Enabled            = true       register in the paused state when false
+        Immediate          = false      fire on the next frame instead of after one delay
+        Once               = false      drop the interval as soon as it becomes due
+        Owner              = nil        tag for UnregisterOwner(owner)
+        Replace            = true       replace a name that is already registered
+        DisableAfterErrors = nil        pause the interval after N consecutive failures
+
+    Diagnostics
+    -----------
+    Every line is prefixed "[i] [Scope]" or "[!] [Scope]". A failing callback is reported
+    once per distinct message and stays quiet until it succeeds again, and the record keeps
+    Runs, Errors, LastError and LastMs for GetInfo() and Dump(). Delays must be finite and
+    zero or greater (NaN and inf are rejected), which is what keeps an interval from
+    silently never firing.
+]]
+
 local RunService = game:GetService("RunService")
 
 -- Diagnostics: every line is "[i] [Function] ..." or "[!] [Function] ...", where the
@@ -65,11 +220,20 @@ local Order    = {}
 local Sequence = 0
 
 local function IsValidDelay(intervalDelay)
-    -- NaN fails every comparison, so it has to be rejected explicitly as well.
+    -- 0 is legal and means "every pass", which is what a raw BindToRenderStep callback
+    -- gets. NaN fails every comparison, so it has to be rejected explicitly as well.
     return type(intervalDelay) == "number"
         and intervalDelay == intervalDelay
-        and intervalDelay > 0
+        and intervalDelay >= 0
         and intervalDelay < Huge
+end
+
+local function DescribeDelay(intervalDelay)
+    if intervalDelay == 0 then
+        return "per frame"
+    end
+
+    return Format("every %.3fs", intervalDelay)
 end
 
 -- Entries written by an older copy of this script get the fields they are missing, so a
@@ -227,10 +391,10 @@ local function RegisterInterval(intervalName, intervalDelay, callback, options)
     ClearFailure(record.FailureKey)
 
     LogInfo("RegisterInterval", Format(
-        "%s interval '%s' (every %.3fs)",
+        "%s interval '%s' (%s)",
         isNew and "Created" or "Replaced",
         intervalName,
-        intervalDelay
+        DescribeDelay(intervalDelay)
     ))
 
     return true
@@ -258,7 +422,7 @@ local function SetDelay(intervalName, intervalDelay)
     record.Delay    = intervalDelay
     record.NextTick = Clock() + intervalDelay
 
-    LogInfo("SetDelay", Format("Interval '%s' now runs every %.3fs", intervalName, intervalDelay))
+    LogInfo("SetDelay", Format("Interval '%s' now runs %s", intervalName, DescribeDelay(intervalDelay)))
 
     return true
 end
@@ -433,10 +597,10 @@ local function Dump()
         local info = listed[index]
 
         LogInfo("Dump", Format(
-            "%-24s every %6.3fs  next %7.3fs  runs %-6d errors %-4d %s",
+            "%-24s every %-8s next %8s  runs %-6d errors %-4d %s",
             info.Name,
-            info.Delay,
-            info.NextIn,
+            info.Delay == 0 and "frame" or Format("%.3fs", info.Delay),
+            info.Delay == 0 and "-" or Format("%.3fs", info.NextIn),
             info.Runs,
             info.Errors,
             info.Enabled and "" or "(paused)"
@@ -485,9 +649,10 @@ local function InvokeRecord(record, elapsedSeconds)
     end
 end
 
-local Running    = false
-local DueRecords = {}
-local DueTicks   = {}
+local Running      = false
+local DueRecords   = {}
+local DueTicks     = {}
+local DueHighWater = 0
 
 local function RunDueIntervals()
     if Running then
@@ -508,6 +673,10 @@ local function RunDueIntervals()
             dueCount += 1
             DueRecords[dueCount] = record
             DueTicks[dueCount]   = record.NextTick
+
+            if dueCount > DueHighWater then
+                DueHighWater = dueCount
+            end
         end
     end
 
@@ -519,7 +688,8 @@ local function RunDueIntervals()
 
     ProfileBegin("IntervalWatchdog")
 
-    local deadline = now + FRAME_BUDGET
+    local deadline     = now + FRAME_BUDGET
+    local invokedTimed = 0
 
     for index = 1, dueCount do
         local record        = DueRecords[index]
@@ -533,6 +703,14 @@ local function RunDueIntervals()
         if Intervals[record.Name] == record
             and record.Enabled
             and record.NextTick == scheduledTick then
+            -- Per-frame intervals are never deferred: they run on every pass, the way the
+            -- render-step callback they replace would. Timed work yields to the budget once
+            -- one timed interval has already run this pass; a deferred record keeps its old
+            -- NextTick, so it is still due and simply runs on the next frame.
+            if record.Delay > 0 and Clock() >= deadline and invokedTimed > 0 then
+                continue
+            end
+
             local elapsed = now - record.LastRun
 
             if record.Once then
@@ -549,17 +727,17 @@ local function RunDueIntervals()
 
             InvokeRecord(record, elapsed)
 
-            -- Out of budget: whatever is left stays due and runs next frame, so one slow
-            -- interval cannot eat the whole frame. Not logged, this is a hot path.
-            if Clock() >= deadline and index < dueCount then
-                for deferred = index + 1, dueCount do
-                    DueRecords[deferred] = nil
-                    DueTicks[deferred]   = nil
-                end
-
-                break
+            if record.Delay > 0 then
+                invokedTimed += 1
             end
         end
+    end
+
+    -- Drop the references a busier pass left behind, so an unregistered record cannot stay
+    -- alive through the scratch arrays.
+    for index = dueCount + 1, DueHighWater do
+        DueRecords[index] = nil
+        DueTicks[index]   = nil
     end
 
     ProfileEnd()

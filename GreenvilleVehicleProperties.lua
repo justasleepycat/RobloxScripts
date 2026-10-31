@@ -123,7 +123,6 @@ local Player = Players.LocalPlayer
 local Scope  = "VehicleProperties"
 local Theme  = MonoUI.Theme
 
-local RowHeight         = 30
 local SelectionListSize = 180
 local ToastWidth        = 320
 local ToastLifetime     = 4
@@ -313,24 +312,26 @@ end
 local DriveMouse = nil
 local HasWheelForward = false
 local HasWheelBackward = false
-local mouseOk, mouseObject = pcall(function()
-    return Player:GetMouse()
-end)
-if mouseOk and mouseObject ~= nil then
-    DriveMouse = mouseObject
-    local forwardOk = pcall(function()
-        return DriveMouse.WheelForward
-    end)
-    if forwardOk then
-        HasWheelForward = true
-        KEYBIND_OPTIONS[#KEYBIND_OPTIONS + 1] = "Wheel Forward"
-    end
-    local backwardOk = pcall(function()
-        return DriveMouse.WheelBackward
-    end)
-    if backwardOk then
-        HasWheelBackward = true
-        KEYBIND_OPTIONS[#KEYBIND_OPTIONS + 1] = "Wheel Backward"
+do
+    local mouseObject = select(2, pcall(function()
+        return Player:GetMouse()
+    end))
+    if type(mouseObject) == "userdata" then
+        DriveMouse = mouseObject
+        local forwardOk = pcall(function()
+            return DriveMouse.WheelForward
+        end)
+        if forwardOk then
+            HasWheelForward = true
+            KEYBIND_OPTIONS[#KEYBIND_OPTIONS + 1] = "Wheel Forward"
+        end
+        local backwardOk = pcall(function()
+            return DriveMouse.WheelBackward
+        end)
+        if backwardOk then
+            HasWheelBackward = true
+            KEYBIND_OPTIONS[#KEYBIND_OPTIONS + 1] = "Wheel Backward"
+        end
     end
 end
 
@@ -512,6 +513,45 @@ local function LogError(message)
     end
 end
 
+-- One frame callback, driven by the shared Interval Watchdog when it is available. The Watchdog keeps
+-- a single PreSimulation binding, catches callback failures and unregisters by name; RunService is
+-- only the fallback for a client where the module could not be fetched.
+function GreenvilleFrameInterval(name, callback)
+    local environment = _G
+    if type(getgenv) == "function" then
+        local ok, env = pcall(getgenv)
+        if ok and type(env) == "table" then
+            environment = env
+        end
+    end
+
+    local watchdog = environment.IntervalWatchdog
+    if type(watchdog) == "table" and type(watchdog.Every) == "function" then
+        pcall(function()
+            watchdog.SetPhase("PreSimulation")
+        end)
+        pcall(function()
+            watchdog.UnregisterInterval(name)
+        end)
+        local registered, accepted = pcall(function()
+            return watchdog.Every(name, 0.001, function(elapsed)
+                callback(elapsed)
+            end, { Owner = "GreenvilleVehicleProperties", Immediate = true })
+        end)
+        if registered and accepted then
+            return {
+                Disconnect = function()
+                    pcall(function()
+                        watchdog.UnregisterInterval(name)
+                    end)
+                end,
+            }
+        end
+    end
+
+    return RunService.PreSimulation:Connect(callback)
+end
+
 -- A MonoUI window installs one RightControl handler. When a script is reloaded without Unload, the
 -- old gui is gone but that handler can survive and toggle a dead plate's backdrop blur on the next
 -- key press. Clear any such handler at startup so only this instance owns the key.
@@ -551,7 +591,7 @@ end
 
 --=== value helpers ==========================================================
 
-local function FormatNumber(value)
+function FormatNumber(value)
     if value ~= value then
         return "nan"
     end
@@ -567,14 +607,14 @@ local function FormatNumber(value)
     return string.format("%.7g", value)
 end
 
-local function ColorToHex(color)
+function ColorToHex(color)
     local function Channel(value)
         return math.clamp(math.floor(value * 255 + 0.5), 0, 255)
     end
     return string.format("#%02X%02X%02X", Channel(color.R), Channel(color.G), Channel(color.B))
 end
 
-local function FormatValue(value)
+function FormatValue(value)
     local valueType = typeof(value)
     if valueType == "number" then
         return FormatNumber(value)
@@ -598,7 +638,7 @@ local function FormatValue(value)
     return tostring(value)
 end
 
-local function ParseColor(text)
+function ParseColor(text)
     local hex = string.match(text, "#?(%x%x%x%x%x%x)")
     if hex ~= nil then
         return Color3.fromRGB(
@@ -614,7 +654,7 @@ local function ParseColor(text)
     return nil
 end
 
-local function KindOf(value)
+function KindOf(value)
     local valueType = typeof(value)
     if valueType == "boolean" then
         return "Boolean"
@@ -634,7 +674,7 @@ local function KindOf(value)
     return "Unsupported"
 end
 
-local function GroupOf(key)
+function GroupOf(key)
     if string.match(key, "^Paint") then
         return "Paint"
     end
@@ -665,7 +705,7 @@ local function GroupOf(key)
     return "Other"
 end
 
-local function ReadAtSpawn(key)
+function ReadAtSpawn(key)
     for _, prefix in ipairs(SpawnReadPrefixes) do
         if string.sub(key, 1, #prefix) == prefix then
             return true
@@ -676,7 +716,7 @@ end
 
 --=== list helpers ==========================================================
 
-local function CopyValue(value)
+function CopyValue(value)
     if type(value) ~= "table" then
         return value
     end
@@ -687,7 +727,7 @@ local function CopyValue(value)
     return copy
 end
 
-local function FormatList(list)
+function FormatList(list)
     local parts = {}
     for _, value in ipairs(list) do
         table.insert(parts, FormatNumber(value))
@@ -695,7 +735,7 @@ local function FormatList(list)
     return table.concat(parts, ", ")
 end
 
-local function ParseList(text)
+function ParseList(text)
     local values = {}
     for token in string.gmatch(text, "[^,%s]+") do
         local value = tonumber(token)
@@ -876,6 +916,7 @@ local FEATURE_HELP = {
     Downforce = "Downforce Assist adds a local downward force to the car as speed rises. It starts above about 70 mph, grows with the square of speed and pushes near the centre of mass. It also re-asserts dry-road friction every second. It is a client-side aid, not a server modification.",
     WheelLock = "Wheel Lock 300+ places an axle-aligned hinge on each wheel above 300 mph. The hinge holds the wheel's position relative to the chassis and locks steering and camber while leaving the wheel free to roll. Below 295 mph the hinges are removed and the original suspension and steering links are restored. It is intended only for extreme-speed stabilisation.",
     SaveRestore = "Save / Restore Properties stores a snapshot of the selected car and wheel attributes. Open the panel to choose which properties are included; Select All and Unselect All are at the top. Saving captures the values, restoring writes them back to the local car. Snapshots are in memory and are lost when the script unloads, so save a named preset instead for a persistent copy.",
+    Collision = "Collision Filters disables collision locally for Players, Vehicles, Trees, Streetlights, Fences, Railings, Street signs and Poles. Open the panel, tick the types you want, and use Select All or Unselect All at the top to change every tick at once. A PreSimulation pass re-asserts every disabled part each frame, because an interval alone is not enough for a fast player or car; the Interval Watchdog also rescans once a second. Untick a type or unload the script and every original CanCollide is restored.",
     Unload = "Unload closes the editor, stops Downforce, Boost and Fly, removes the Wheel Lock hinges, disconnects every listener and removes the window. It restores any values the editor changed while it was running; the car then belongs to the game again.",
     GearRatioBuilder = "The Gear Ratio Builder turns a target top speed into a usable A-Chassis gear set. It uses the driven wheel's diameter, Redline, FinalDrive, FDMult and the number of forward gears. Build preserves the reverse and neutral slots and generates a geometric spread from your first forward gear to the top forward gear. Apply writes the result into the tune; exit and re-enter the vehicle for A-Chassis to use it.",
     FinalDriveBuilder = "The Final Drive Builder splits A-Chassis's final drive into its two components: FinalDrive (the axle ratio) and FDMult (the multiplier). Enter a total final-drive product and an axle ratio, then Build calculates the multiplier. Apply writes both fields into the tune. If the product stays the same, the car's physics stays the same; splitting only changes how the two fields are labelled.",
@@ -910,7 +951,7 @@ local function PropertyHelp(key, group, kind)
     )
 end
 
-local function ComputeMaxSpeed()
+function ComputeMaxSpeed()
     local tune = State.tune
     local wheels = State.wheels
     if tune == nil or wheels == nil then
@@ -951,7 +992,7 @@ end
 -- A lower bound, not a promise: it is the time 60 mph takes if every horsepower reached the road
 -- with no losses, no traction limit and no shifting. It moves with the two numbers that really
 -- decide acceleration - power and weight - which is what makes it useful beside them.
-local function ComputeAcceleration()
+function ComputeAcceleration()
     local tune = State.tune
     if tune == nil then
         return 0
@@ -967,7 +1008,7 @@ local function ComputeAcceleration()
     return math.floor((0.5 * mass * target * target / power) * 10 + 0.5) / 10
 end
 
-local function RefreshDerivedEntries()
+function RefreshDerivedEntries()
     for _, entry in ipairs(State.entries) do
         if entry.source == "Derived" then
             local value = entry.compute()
@@ -2521,7 +2562,7 @@ local function CreateEditor(row, entry)
 end
 
 local function CreatePropertyRow(parent, order, entry)
-    local row = MonoUI.Row(parent, order, RowHeight)
+    local row = MonoUI.Row(parent, order, 30)
     MonoUI.Help {
         Parent   = row,
         Position = UDim2.fromOffset(0, 7),
@@ -4128,7 +4169,7 @@ local function StartAccelerationMeasure(setStatus)
         SetStatus = setStatus,
         Connection = nil,
     }
-    measure.Connection = RunService.Heartbeat:Connect(function()
+    measure.Connection = GreenvilleFrameInterval("VehicleProperties.AccelerationMeasure", function()
         if State.window == nil
             or State.window.plate == nil
             or State.window.plate.Parent == nil
@@ -4542,7 +4583,7 @@ local function StartDownforce()
     end
     Downforce.Enabled = true
     Downforce.FrictionClock = 0
-    Downforce.Connection = RunService.Heartbeat:Connect(function(deltaTime)
+    Downforce.Connection = GreenvilleFrameInterval("VehicleProperties.Downforce", function(deltaTime)
         if not Downforce.Enabled then
             return
         end
@@ -4800,7 +4841,7 @@ local function StartWheelLock()
     WheelLock.Car = nil
     WheelLock.Cooldown = 0
     WheelLock.Recheck = 0
-    WheelLock.Connection = RunService.Heartbeat:Connect(function(deltaTime)
+    WheelLock.Connection = GreenvilleFrameInterval("VehicleProperties.WheelLock", function(deltaTime)
         if not WheelLock.Enabled then
             return
         end
@@ -4862,7 +4903,432 @@ local function SetWheelLock(enabled)
     end
 end
 
+--=== collision filters =====================================================
+
+-- Every option disables collision only on this client and only while it is ticked. The original
+-- CanCollide is remembered per part so anything restored on unload, on unticking, or when the local
+-- car changes. PreSimulation re-asserts the filter every frame because an interval is not enough for
+-- fast players or vehicles that can cross the car between ticks.
+local Collision = {
+    Categories         = {
+        "Players",
+        "Vehicles",
+        "Trees",
+        "Streetlights",
+        "Fences",
+        "Railings",
+        "Street signs",
+        "Poles",
+    },
+    ListSize           = 260,
+    Selected           = {},
+    Records            = {},
+    ClassCache         = {},
+    Open               = false,
+    Panel              = nil,
+    Status             = nil,
+    Refreshers         = {},
+    Connection         = nil,
+    WatchConnection    = nil,
+    RemovingConnection = nil,
+    RefreshInterval    = false,
+    Watchdog           = nil,
+    RefreshToken       = 0,
+}
+
+function Collision.LoadWatchdog()
+    local watchdogUrl = "https://raw.githubusercontent.com/justasleepycat/RobloxScripts/refs/heads/main/Interval%20Watchdog.lua"
+    local environment = _G
+    if type(getgenv) == "function" then
+        local envOk, env = pcall(getgenv)
+        if envOk and type(env) == "table" then
+            environment = env
+        end
+    end
+
+    if type(environment) == "table" and type(environment.IntervalWatchdog) == "table" then
+        Collision.Watchdog = environment.IntervalWatchdog
+        LogInfo("Interval Watchdog found in getgenv()")
+    else
+        local loaded, result = pcall(function()
+            local fetched, source = pcall(function()
+                return game:HttpGet(watchdogUrl)
+            end)
+            if not fetched then
+                local getter = rawget(_G, "HttpGet")
+                if type(getter) ~= "function" then
+                    error(source)
+                end
+                source = getter(watchdogUrl)
+            end
+            return loadstring(source)()
+        end)
+        if loaded and type(result) == "table" then
+            Collision.Watchdog = result
+            if type(environment) == "table" then
+                environment.IntervalWatchdog = result
+            end
+            LogInfo("Interval Watchdog loaded from GitHub")
+        else
+            LogError("Interval Watchdog could not be loaded: " .. tostring(result))
+        end
+    end
+
+    if type(Collision.Watchdog) ~= "table" or type(Collision.Watchdog.Every) ~= "function" then
+        Collision.Watchdog = nil
+        LogError("Interval Watchdog is unavailable; collision filters use PreSimulation only")
+    end
+end
+
+Collision.LoadWatchdog()
+
+function Collision.HasSelection()
+    for _, category in ipairs(Collision.Categories) do
+        if Collision.Selected[category] then
+            return true
+        end
+    end
+    return false
+end
+
+function Collision.SelectedText()
+    local names = {}
+    for _, category in ipairs(Collision.Categories) do
+        if Collision.Selected[category] then
+            names[#names + 1] = category
+        end
+    end
+    if #names == 0 then
+        return "None"
+    end
+    return table.concat(names, ", ")
+end
+
+function Collision.UpdateStatus()
+    if Collision.Status ~= nil then
+        Collision.Status.Text = "Selected: " .. Collision.SelectedText()
+    end
+end
+
+function Collision.RefreshCheckboxes()
+    for _, refresh in ipairs(Collision.Refreshers) do
+        pcall(refresh)
+    end
+end
+
+-- A part belongs to the local car or the local character by ancestry, so those are excluded before
+-- the prop-name checks. Other session vehicles and other characters are categories of their own.
+function Collision.Classify(part)
+    if not part:IsA("BasePart") then
+        return nil
+    end
+    local cached = Collision.ClassCache[part]
+    if cached ~= nil then
+        return cached or nil
+    end
+    local function Finish(category)
+        Collision.ClassCache[part] = category or false
+        return category
+    end
+
+    local sessionVehicles = Workspace:FindFirstChild("SessionVehicles")
+    local node = part
+    while node ~= nil and node ~= Workspace do
+        local owner = Players:GetPlayerFromCharacter(node)
+        if owner ~= nil then
+            if owner == Player then
+                return Finish(nil)
+            end
+            return Finish("Players")
+        end
+        if sessionVehicles ~= nil and node.Parent == sessionVehicles and node:IsA("Model") then
+            if node == State.car or node.Name == Player.Name .. "-Car" then
+                return Finish(nil)
+            end
+            return Finish("Vehicles")
+        end
+        node = node.Parent
+    end
+
+    local names = {}
+    node = part
+    while node ~= nil and node ~= Workspace do
+        names[#names + 1] = string.lower(node.Name)
+        node = node.Parent
+    end
+    for _, name in ipairs(names) do
+        if string.find(name, "streetlamp", 1, true)
+            or string.find(name, "street lamp", 1, true)
+            or string.find(name, "streetlight", 1, true)
+            or string.find(name, "street light", 1, true)
+        then
+            return Finish("Streetlights")
+        end
+    end
+    for _, name in ipairs(names) do
+        if string.find(name, "tree", 1, true) then
+            return Finish("Trees")
+        end
+    end
+    for _, name in ipairs(names) do
+        if string.find(name, "fence", 1, true) then
+            return Finish("Fences")
+        end
+    end
+    for _, name in ipairs(names) do
+        if string.find(name, "rail", 1, true)
+            and not string.find(name, "trail", 1, true)
+            and not string.find(name, "trailer", 1, true)
+        then
+            return Finish("Railings")
+        end
+    end
+    for _, name in ipairs(names) do
+        if string.find(name, "sign", 1, true)
+            and not string.find(name, "signal", 1, true)
+            and not string.find(name, "design", 1, true)
+            and not string.find(name, "assign", 1, true)
+        then
+            return Finish("Street signs")
+        end
+    end
+    for _, name in ipairs(names) do
+        if string.find(name, "pole", 1, true) then
+            return Finish("Poles")
+        end
+    end
+    return Finish(nil)
+end
+
+function Collision.RestorePart(part, record)
+    if part.Parent ~= nil and record.original ~= nil then
+        pcall(function()
+            part.CanCollide = record.original
+        end)
+    end
+    Collision.Records[part] = nil
+end
+
+function Collision.RestoreCategory(category)
+    for part, record in pairs(Collision.Records) do
+        if record.category == category then
+            Collision.RestorePart(part, record)
+        end
+    end
+end
+
+function Collision.RestoreAll()
+    for part, record in pairs(Collision.Records) do
+        Collision.RestorePart(part, record)
+    end
+end
+
+function Collision.Forget(part)
+    Collision.ClassCache[part] = nil
+    Collision.Records[part] = nil
+end
+
+function Collision.Track(part)
+    if not part:IsA("BasePart") or part.Parent == nil then
+        return
+    end
+    local category = Collision.Classify(part)
+    local record = Collision.Records[part]
+    if category == nil or not Collision.Selected[category] then
+        if record ~= nil then
+            Collision.RestorePart(part, record)
+        end
+        return
+    end
+    if record == nil then
+        record = { original = part.CanCollide, category = category }
+        Collision.Records[part] = record
+    else
+        record.category = category
+    end
+    if part.CanCollide then
+        part.CanCollide = false
+    end
+end
+
+function Collision.Enforce()
+    for part, record in pairs(Collision.Records) do
+        if part.Parent == nil then
+            Collision.Records[part] = nil
+        elseif part.CanCollide then
+            part.CanCollide = false
+        end
+    end
+end
+
+function Collision.Refresh()
+    local token = Collision.RefreshToken
+    for part, record in pairs(Collision.Records) do
+        if token ~= Collision.RefreshToken then
+            return
+        end
+        if part.Parent == nil then
+            Collision.Records[part] = nil
+        else
+            Collision.Track(part)
+        end
+    end
+
+    -- Only parts near the car (or the character when there is no car) can collide with it. Scanning
+    -- the whole map was slow enough that the filter appeared dead in Greenville, so this is a
+    -- bounded spatial query instead; DescendantAdded and the Watchdog cover anything that appears.
+    local car = State.car
+    local seat = car and car:FindFirstChild("DriveSeat")
+    local center = seat and seat.Position
+    if center == nil then
+        local character = Player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        center = root and root.Position
+    end
+    if center == nil then
+        return
+    end
+
+    local parts = Workspace:GetPartBoundsInRadius(center, 1200)
+    for _, part in ipairs(parts) do
+        if token ~= Collision.RefreshToken then
+            return
+        end
+        if part:IsA("BasePart") then
+            Collision.Track(part)
+        end
+    end
+    if token ~= Collision.RefreshToken then
+        return
+    end
+    Collision.Enforce()
+end
+
+function Collision.Schedule()
+    Collision.RefreshToken = Collision.RefreshToken + 1
+    local token = Collision.RefreshToken
+    task.defer(function()
+        if token ~= Collision.RefreshToken then
+            return
+        end
+        Collision.Refresh()
+    end)
+end
+
+function Collision.UpdateWatcher()
+    if Collision.HasSelection() then
+        if Collision.Connection == nil then
+            Collision.Connection = GreenvilleFrameInterval("VehicleProperties.CollisionEnforce", Collision.Enforce)
+        end
+        if Collision.WatchConnection == nil then
+            Collision.WatchConnection = Workspace.DescendantAdded:Connect(function(descendant)
+                if descendant:IsA("BasePart") then
+                    Collision.ClassCache[descendant] = nil
+                    Collision.Track(descendant)
+                end
+            end)
+        end
+        if Collision.RemovingConnection == nil then
+            Collision.RemovingConnection = Workspace.DescendantRemoving:Connect(function(descendant)
+                if descendant:IsA("BasePart") then
+                    Collision.Forget(descendant)
+                end
+            end)
+        end
+        if Collision.Watchdog ~= nil and not Collision.RefreshInterval then
+            Collision.Watchdog.UnregisterInterval("VehicleProperties.CollisionRefresh")
+            Collision.RefreshInterval = Collision.Watchdog.Every("VehicleProperties.CollisionRefresh", 1.0, function()
+                if Collision.HasSelection() then
+                    Collision.Refresh()
+                end
+            end, { Owner = "VehicleProperties" })
+        end
+        return
+    end
+    if Collision.Watchdog ~= nil and Collision.RefreshInterval then
+        Collision.Watchdog.UnregisterInterval("VehicleProperties.CollisionRefresh")
+        Collision.RefreshInterval = false
+    end
+    for key in ipairs({ "Connection", "WatchConnection", "RemovingConnection" }) do
+        local connection = Collision[key]
+        if connection ~= nil then
+            pcall(function()
+                connection:Disconnect()
+            end)
+            Collision[key] = nil
+        end
+    end
+end
+
+function Collision.SetCategory(category, enabled)
+    if Collision.Selected[category] == enabled then
+        return
+    end
+    Collision.Selected[category] = enabled
+    Collision.RefreshToken = Collision.RefreshToken + 1
+    if enabled then
+        Collision.Schedule()
+    else
+        Collision.RestoreCategory(category)
+    end
+    Collision.UpdateWatcher()
+    Collision.RefreshCheckboxes()
+    Collision.UpdateStatus()
+    LogInfo(string.format("%s collision %s", category, enabled and "disabled" or "restored"))
+    Notify("info", string.format("%s collision %s", category, enabled and "disabled" or "restored"))
+end
+
+function Collision.SetAll(enabled)
+    for _, category in ipairs(Collision.Categories) do
+        Collision.Selected[category] = enabled
+    end
+    if enabled then
+        Collision.Schedule()
+    else
+        Collision.RefreshToken = Collision.RefreshToken + 1
+        Collision.RestoreAll()
+    end
+    Collision.UpdateWatcher()
+    Collision.RefreshCheckboxes()
+    Collision.UpdateStatus()
+    LogInfo(enabled and "All collision filters disabled" or "All collision filters restored")
+    Notify("info", enabled and "All collision filters disabled" or "All collision filters restored")
+end
+
+function Collision.OnCarChanged()
+    if not Collision.HasSelection() then
+        return
+    end
+    Collision.RestoreAll()
+    Collision.ClassCache = {}
+    Collision.Schedule()
+end
+
+function Collision.Clear()
+    Collision.RestoreAll()
+    Collision.RefreshToken = Collision.RefreshToken + 1
+    Collision.Selected = {}
+    Collision.ClassCache = {}
+    if Collision.Watchdog ~= nil and Collision.RefreshInterval then
+        Collision.Watchdog.UnregisterInterval("VehicleProperties.CollisionRefresh")
+        Collision.RefreshInterval = false
+    end
+    for key in ipairs({ "Connection", "WatchConnection", "RemovingConnection" }) do
+        local connection = Collision[key]
+        if connection ~= nil then
+            pcall(function()
+                connection:Disconnect()
+            end)
+            Collision[key] = nil
+        end
+    end
+    Collision.UpdateStatus()
+    Collision.RefreshCheckboxes()
+    LogInfo("Collision filters cleared and collision restored")
+end
+
 --=== boost =================================================================
+
 
 local function FormatBoostAxes(axes)
     local names = {}
@@ -5032,7 +5498,7 @@ local function StartBoost()
     Boost.ActiveLabel = FormatBoostAxes(activeAxes)
     Boost.Elapsed = 0
     Boost.Active = true
-    Boost.Connection = RunService.PreSimulation:Connect(StepBoost)
+    Boost.Connection = GreenvilleFrameInterval("VehicleProperties.Boost", StepBoost)
     Notify("success", string.format(
         "Boost: +%.1f studs/s over %.2fs along %s (max %.0f mph)",
         Boost.Strength,
@@ -5123,7 +5589,7 @@ local function SetFly(enabled)
             seat.AssemblyLinearVelocity = Vector3.zero
             seat.AssemblyAngularVelocity = Vector3.zero
         end)
-        Fly.Connection = RunService.PreSimulation:Connect(function(deltaTime)
+        Fly.Connection = GreenvilleFrameInterval("VehicleProperties.Fly", function(deltaTime)
             StepFly(deltaTime)
         end)
         table.insert(Fly.KeyConnections, UserInputService.InputBegan:Connect(FlyInputBegan))
@@ -5415,7 +5881,317 @@ local function UpdateListHeight()
     if State.panelOpen then
         height = math.max(180, height - SelectionListSize)
     end
+    if Collision.Open then
+        height = math.max(180, height - Collision.ListSize)
+    end
     State.listFrame.Size = UDim2.new(1, 0, 0, height)
+end
+
+function Collision.BuildSnapshotUI(content, nextOrder)
+    local panelButtonRow = MonoUI.Row(content, nextOrder(), 34)
+    MonoUI.Help {
+        Parent   = panelButtonRow,
+        Position = UDim2.fromOffset(0, 9),
+        Title    = "Save / Restore Properties",
+        Text     = FEATURE_HELP.SaveRestore,
+    }
+    MonoUI.Button {
+        Parent   = panelButtonRow,
+        Caption  = "Save / Restore Properties",
+        Size     = UDim2.new(1, -20, 0, 30),
+        Position = UDim2.fromOffset(20, 2),
+        OnClick  = function()
+            State.panelOpen = not State.panelOpen
+            RenderSnapshotPanel()
+            UpdateListHeight()
+        end,
+    }
+
+    local panelFrame = MonoUI.Element {
+        ClassName              = "Frame",
+        Parent                 = content,
+        Name                   = "SnapshotPanel",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 0),
+        AutomaticSize          = Enum.AutomaticSize.Y,
+        LayoutOrder            = nextOrder(),
+        Visible                = false,
+    }
+    MonoUI.Element {
+        ClassName = "UIListLayout",
+        Parent    = panelFrame,
+        Padding   = UDim.new(0, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }
+    State.panelFrame = panelFrame
+end
+
+function Collision.BuildPanels(content, nextOrder)
+    Collision.BuildUI(content, nextOrder)
+    Collision.BuildSnapshotUI(content, nextOrder)
+end
+
+function Collision.BuildList(content, nextOrder)
+    local screenHeight = 1080
+    local camera = Workspace.CurrentCamera
+    if camera ~= nil then
+        screenHeight = camera.ViewportSize.Y
+    end
+    local listHeight = math.clamp(screenHeight * 0.36, 240, 460)
+    State.listHeight = listHeight
+
+    local listFrame = MonoUI.Element {
+        ClassName              = "ScrollingFrame",
+        Parent                 = content,
+        Name                   = "Properties",
+        BackgroundTransparency = 1,
+        BorderSizePixel        = 0,
+        ScrollBarThickness     = 4,
+        Size                   = UDim2.new(1, 0, 0, listHeight),
+        CanvasSize             = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize    = Enum.AutomaticSize.Y,
+        LayoutOrder            = nextOrder(),
+        ZIndex                 = 2,
+    }
+    MonoUI.Element {
+        ClassName = "UIListLayout",
+        Parent    = listFrame,
+        Padding   = UDim.new(0, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }
+    State.listFrame = listFrame
+end
+
+function Collision.BuildFooter(content, nextOrder)
+    local footerRow = MonoUI.Row(content, nextOrder(), 46)
+    local footerCell = MonoUI.Columns(footerRow, 3, 8, 34)
+    MonoUI.Element {
+        ClassName              = "Frame",
+        Parent                 = footerRow,
+        BackgroundTransparency = 1,
+        Size                   = footerCell,
+        LayoutOrder            = 1,
+    }
+    local unloadCell = MonoUI.Element {
+        ClassName              = "Frame",
+        Parent                 = footerRow,
+        BackgroundTransparency = 1,
+        Size                   = footerCell,
+        LayoutOrder            = 2,
+    }
+    MonoUI.Help {
+        Parent   = unloadCell,
+        Position = UDim2.fromOffset(0, 9),
+        Title    = "Unload",
+        Text     = FEATURE_HELP.Unload,
+    }
+    MonoUI.Button {
+        Parent   = unloadCell,
+        Caption  = "Unload",
+        Size     = UDim2.new(1, -20, 0, 34),
+        Position = UDim2.fromOffset(20, 0),
+        OnClick  = function()
+            Unload()
+        end,
+    }
+    MonoUI.Element {
+        ClassName              = "Frame",
+        Parent                 = footerRow,
+        BackgroundTransparency = 1,
+        Size                   = footerCell,
+        LayoutOrder            = 3,
+    }
+end
+
+--=== collision panel =======================================================
+
+function Collision.CreateCheckbox(parent, order, category)
+    local row = MonoUI.Element {
+        ClassName              = "TextButton",
+        Parent                 = parent,
+        Name                   = category,
+        AutoButtonColor         = false,
+        Text                   = "",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 24),
+        LayoutOrder            = order,
+        ZIndex                 = 2,
+    }
+
+    local box = MonoUI.Sticker(MonoUI.Element {
+        ClassName              = "Frame",
+        Parent                 = row,
+        Name                   = "Box",
+        BackgroundColor3       = Theme.Well,
+        BackgroundTransparency = Theme.WellAlpha,
+        Size                   = UDim2.fromOffset(14, 14),
+        Position               = UDim2.new(0, 2, 0.5, -7),
+        ZIndex                 = 3,
+    }, { Corner = 4, Stroke = "Line" })
+
+    local mark = MonoUI.Element {
+        ClassName        = "Frame",
+        Parent           = box,
+        Name             = "Mark",
+        BackgroundColor3 = Theme.Text,
+        BorderSizePixel  = 0,
+        Size             = UDim2.fromOffset(8, 8),
+        Position         = UDim2.new(0.5, -4, 0.5, -4),
+        Visible          = false,
+        ZIndex           = 4,
+    }
+    MonoUI.Element {
+        ClassName    = "UICorner",
+        Parent       = mark,
+        CornerRadius = UDim.new(0, 2),
+    }
+
+    MonoUI.Texted(row, {
+        Text     = category,
+        Size     = Theme.Type.Body,
+        Tint     = "Text",
+        Bold     = false,
+        Position = UDim2.fromOffset(24, 0),
+        Size2    = UDim2.new(1, -28, 1, 0),
+        ZIndex   = 3,
+    })
+
+    local function Refresh()
+        mark.Visible = Collision.Selected[category] == true
+    end
+    table.insert(Collision.Refreshers, Refresh)
+    Refresh()
+
+    row.MouseButton1Click:Connect(function()
+        Collision.SetCategory(category, not Collision.Selected[category])
+    end)
+end
+
+function Collision.RenderPanel()
+    local panel = Collision.Panel
+    if panel == nil then
+        return
+    end
+
+    for _, child in ipairs(panel:GetChildren()) do
+        if child:IsA("GuiObject") then
+            child:Destroy()
+        end
+    end
+    Collision.Refreshers = {}
+    Collision.Status = nil
+
+    if not Collision.Open then
+        panel.Visible = false
+        panel.Size = UDim2.new(1, 0, 0, 0)
+        return
+    end
+
+    panel.Visible = true
+    panel.Size = UDim2.new(1, 0, 0, 0)
+
+    local order = 0
+    local function NextOrder()
+        order = order + 1
+        return order
+    end
+
+    local selectRow = MonoUI.Row(panel, NextOrder(), 28)
+    local selectCell = MonoUI.Columns(selectRow, 2, 6, 26)
+    MonoUI.Button {
+        Parent  = selectRow,
+        Caption = "Select All",
+        Size    = selectCell,
+        Order   = 1,
+        OnClick = function()
+            Collision.SetAll(true)
+        end,
+    }
+    MonoUI.Button {
+        Parent  = selectRow,
+        Caption = "Unselect All",
+        Size    = selectCell,
+        Order   = 2,
+        OnClick = function()
+            Collision.SetAll(false)
+        end,
+    }
+
+    MonoUI.Heading(panel, NextOrder(), "Collision types")
+
+    local scroller = MonoUI.Element {
+        ClassName              = "ScrollingFrame",
+        Parent                 = panel,
+        Name                   = "CollisionList",
+        BackgroundTransparency = 1,
+        BorderSizePixel        = 0,
+        ScrollBarThickness     = 4,
+        Size                   = UDim2.new(1, 0, 0, SelectionListSize),
+        CanvasSize             = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize    = Enum.AutomaticSize.Y,
+        LayoutOrder            = NextOrder(),
+        ZIndex                 = 2,
+    }
+    MonoUI.Element {
+        ClassName = "UIListLayout",
+        Parent    = scroller,
+        Padding   = UDim.new(0, 2),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }
+
+    for index, category in ipairs(Collision.Categories) do
+        Collision.CreateCheckbox(scroller, index, category)
+    end
+
+    Collision.Status = MonoUI.Texted(panel, {
+        Text        = "Selected: None",
+        Size        = Theme.Type.Support,
+        Tint        = "Muted",
+        Bold        = false,
+        Size2       = UDim2.new(1, 0, 0, 16),
+        LayoutOrder = NextOrder(),
+    })
+    Collision.UpdateStatus()
+end
+
+function Collision.BuildUI(content, nextOrder)
+    MonoUI.Heading(content, nextOrder(), "Collision")
+    local collisionButtonRow = MonoUI.Row(content, nextOrder(), 34)
+    MonoUI.Help {
+        Parent   = collisionButtonRow,
+        Position = UDim2.fromOffset(0, 9),
+        Title    = "Collision Filters",
+        Text     = FEATURE_HELP.Collision,
+    }
+    MonoUI.Button {
+        Parent   = collisionButtonRow,
+        Caption  = "Collision Filters",
+        Size     = UDim2.new(1, -20, 0, 30),
+        Position = UDim2.fromOffset(20, 2),
+        ZIndex   = 47,
+        OnClick  = function()
+            Collision.Open = not Collision.Open
+            Collision.RenderPanel()
+            UpdateListHeight()
+        end,
+    }
+    local collisionPanel = MonoUI.Element {
+        ClassName              = "Frame",
+        Parent                 = content,
+        Name                   = "CollisionPanel",
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, 0, 0, 0),
+        AutomaticSize          = Enum.AutomaticSize.Y,
+        LayoutOrder            = nextOrder(),
+        Visible                = false,
+    }
+    MonoUI.Element {
+        ClassName = "UIListLayout",
+        Parent    = collisionPanel,
+        Padding   = UDim.new(0, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }
+    Collision.Panel = collisionPanel
 end
 
 --=== vehicle binding =======================================================
@@ -5871,8 +6647,9 @@ local function CreateInterface()
         VerticalAlignment   = Enum.VerticalAlignment.Bottom,
     }
 
-    local order = 0
-    local function NextOrder()
+    local function BuildVehicleContent()
+        local order = 0
+        local function NextOrder()
         order = order + 1
         return order
     end
@@ -6001,114 +6778,18 @@ local function CreateInterface()
             SetWheelLock(value)
         end,
     }
-    local panelButtonRow = MonoUI.Row(State.content, NextOrder(), 34)
-    MonoUI.Help {
-        Parent   = panelButtonRow,
-        Position = UDim2.fromOffset(0, 9),
-        Title    = "Save / Restore Properties",
-        Text     = FEATURE_HELP.SaveRestore,
-    }
-    MonoUI.Button {
-        Parent   = panelButtonRow,
-        Caption  = "Save / Restore Properties",
-        Size     = UDim2.new(1, -20, 0, 30),
-        Position = UDim2.fromOffset(20, 2),
-        OnClick  = function()
-            State.panelOpen = not State.panelOpen
-            RenderSnapshotPanel()
-            UpdateListHeight()
-        end,
-    }
+    Collision.BuildPanels(State.content, NextOrder)
 
-    local panelFrame = MonoUI.Element {
-        ClassName              = "Frame",
-        Parent                 = State.content,
-        Name                   = "SnapshotPanel",
-        BackgroundTransparency = 1,
-        Size                   = UDim2.new(1, 0, 0, 0),
-        AutomaticSize          = Enum.AutomaticSize.Y,
-        LayoutOrder            = NextOrder(),
-        Visible                = false,
-    }
-    MonoUI.Element {
-        ClassName = "UIListLayout",
-        Parent    = panelFrame,
-        Padding   = UDim.new(0, 6),
-        SortOrder = Enum.SortOrder.LayoutOrder,
-    }
-    State.panelFrame = panelFrame
+    Collision.BuildList(State.content, NextOrder)
 
-    local screenHeight = 1080
-    local camera = Workspace.CurrentCamera
-    if camera ~= nil then
-        screenHeight = camera.ViewportSize.Y
+    Collision.BuildFooter(State.content, NextOrder)
     end
-    local listHeight = math.clamp(screenHeight * 0.36, 240, 460)
-    State.listHeight = listHeight
+    BuildVehicleContent()
 
-    local listFrame = MonoUI.Element {
-        ClassName              = "ScrollingFrame",
-        Parent                 = State.content,
-        Name                   = "Properties",
-        BackgroundTransparency = 1,
-        BorderSizePixel        = 0,
-        ScrollBarThickness     = 4,
-        Size                   = UDim2.new(1, 0, 0, listHeight),
-        CanvasSize             = UDim2.new(0, 0, 0, 0),
-        AutomaticCanvasSize    = Enum.AutomaticSize.Y,
-        LayoutOrder            = NextOrder(),
-        ZIndex                 = 2,
-    }
-    MonoUI.Element {
-        ClassName = "UIListLayout",
-        Parent    = listFrame,
-        Padding   = UDim.new(0, 6),
-        SortOrder = Enum.SortOrder.LayoutOrder,
-    }
-    State.listFrame = listFrame
-
-    local footerRow = MonoUI.Row(State.content, NextOrder(), 46)
-    local footerCell = MonoUI.Columns(footerRow, 3, 8, 34)
-    MonoUI.Element {
-        ClassName              = "Frame",
-        Parent                 = footerRow,
-        BackgroundTransparency = 1,
-        Size                   = footerCell,
-        LayoutOrder            = 1,
-    }
-    local unloadCell = MonoUI.Element {
-        ClassName              = "Frame",
-        Parent                 = footerRow,
-        BackgroundTransparency = 1,
-        Size                   = footerCell,
-        LayoutOrder            = 2,
-    }
-    MonoUI.Help {
-        Parent   = unloadCell,
-        Position = UDim2.fromOffset(0, 9),
-        Title    = "Unload",
-        Text     = FEATURE_HELP.Unload,
-    }
-    MonoUI.Button {
-        Parent   = unloadCell,
-        Caption  = "Unload",
-        Size     = UDim2.new(1, -20, 0, 34),
-        Position = UDim2.fromOffset(20, 0),
-        OnClick  = function()
-            Unload()
-        end,
-    }
-    MonoUI.Element {
-        ClassName              = "Frame",
-        Parent                 = footerRow,
-        BackgroundTransparency = 1,
-        Size                   = footerCell,
-        LayoutOrder            = 3,
-    }
-
-    -- The display spins ten degrees a second while nothing is dragging it. One loop for the app,
-    -- reading whichever model the current header built, so a rebuilt header needs no new loop.
-    table.insert(State.globalConnections, RunService.RenderStepped:Connect(function(deltaTime)
+    local function FinishInterface()
+        -- The display spins ten degrees a second while nothing is dragging it. One loop for the app,
+        -- reading whichever model the current header built, so a rebuilt header needs no new loop.
+        table.insert(State.globalConnections, GreenvilleFrameInterval("VehicleProperties.Viewport", function(deltaTime)
         if State.viewportDisplay == nil or State.window == nil or not State.window.visible then
             return
         end
@@ -6170,6 +6851,8 @@ local function CreateInterface()
     presetsTab.button.MouseButton1Click:Connect(function()
         RenderPresets()
     end)
+    end
+    FinishInterface()
 end
 
 function Unload()
@@ -6178,6 +6861,11 @@ function Unload()
         MonoUI:CloseDialogs()
     end)
     StopAccelerationMeasure()
+    Collision.Clear()
+    Collision.Open = false
+    Collision.Panel = nil
+    Collision.Status = nil
+    Collision.Refreshers = {}
     State.pollToken = State.pollToken + 1
     SetDownforce(false)
     SetWheelLock(false)
