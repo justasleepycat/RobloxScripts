@@ -180,6 +180,9 @@ local State = {
     tuneModule         = nil,
     pollToken          = 0,
     builderDialog      = nil,
+    measuredAcceleration = nil,
+    accelerationMeasure = nil,
+    chassisRestarting   = false,
     viewport           = nil,
     viewportDisplay    = nil,
     viewportCenter     = nil,
@@ -876,7 +879,8 @@ local FEATURE_HELP = {
     Unload = "Unload closes the editor, stops Downforce, Boost and Fly, removes the Wheel Lock hinges, disconnects every listener and removes the window. It restores any values the editor changed while it was running; the car then belongs to the game again.",
     GearRatioBuilder = "The Gear Ratio Builder turns a target top speed into a usable A-Chassis gear set. It uses the driven wheel's diameter, Redline, FinalDrive, FDMult and the number of forward gears. Build preserves the reverse and neutral slots and generates a geometric spread from your first forward gear to the top forward gear. Apply writes the result into the tune; exit and re-enter the vehicle for A-Chassis to use it.",
     FinalDriveBuilder = "The Final Drive Builder splits A-Chassis's final drive into its two components: FinalDrive (the axle ratio) and FDMult (the multiplier). Enter a total final-drive product and an axle ratio, then Build calculates the multiplier. Apply writes both fields into the tune. If the product stays the same, the car's physics stays the same; splitting only changes how the two fields are labelled.",
-    MaxSpeedBuilder = "The Max Speed Builder calculates the final drive needed for a target top speed with the current gear ratios. Its acceleration section uses a real-world efficiency and a grip-limited 0-60 floor (defaults 12.5% and 1.0 s) to turn a target time into a required horsepower; the current HP is kept when it is already higher. Apply acceleration writes horsepower, the first forward ratio, AWD, TCS/ABS, sticky tires, local dry-road friction, weight distribution and centre of gravity so the launch actually changes. Exit and re-enter the vehicle for A-Chassis to read the tune.",
+    MaxSpeedBuilder = "The Max Speed Builder calculates the final drive needed for a target top speed with the current gear ratios. Its acceleration section is calibrated from a real measured 0-60: press Measure 0-60 from rest, drive from rest to 60 mph, then Build scales horsepower from that baseline. A slower target lowers horsepower; a faster target raises it. The grip floor warns when a target is below the launch/traction limit. Apply changes horsepower only; measure again after changing gearing or grip. Exit and re-enter for A-Chassis to read the tune.",
+    LiveApply = "Live Apply restarts the car's running A-Chassis CarClient without making you exit and re-enter. It captures current speed, steering, throttle, RPM and the gear display, then restores them after the chassis reinitializes. It deliberately does not inject shift keys or force the transmission into a gear, which is what caused the last-gear crash; the gear value is restored for display and the transmission is left to settle normally. If the restart fails, use Unload and reload or re-enter the vehicle.",
 }
 
 local function PropertyHelp(key, group, kind)
@@ -4091,6 +4095,87 @@ local function OpenFinalDriveBuilder()
     }
 end
 
+local function StopAccelerationMeasure()
+    local measure = State.accelerationMeasure
+    if measure == nil then
+        return
+    end
+    State.accelerationMeasure = nil
+    if measure.Connection ~= nil then
+        pcall(function()
+            measure.Connection:Disconnect()
+        end)
+    end
+end
+
+local function StartAccelerationMeasure(setStatus)
+    StopAccelerationMeasure()
+    local car = State.car
+    local seat = car and car:FindFirstChild("DriveSeat")
+    if car == nil or seat == nil then
+        setStatus("Spawn a vehicle before measuring 0-60.", true)
+        return
+    end
+    if seat.AssemblyLinearVelocity.Magnitude > 5 then
+        setStatus("Stop the car before arming the 0-60 measurement.", true)
+        return
+    end
+
+    local measure = {
+        Car = car,
+        Start = os.clock(),
+        LastUpdate = 0,
+        SetStatus = setStatus,
+        Connection = nil,
+    }
+    measure.Connection = RunService.Heartbeat:Connect(function()
+        if State.window == nil
+            or State.window.plate == nil
+            or State.window.plate.Parent == nil
+            or State.car ~= measure.Car
+        then
+            StopAccelerationMeasure()
+            return
+        end
+        local currentSeat = car:FindFirstChild("DriveSeat")
+        if currentSeat == nil then
+            StopAccelerationMeasure()
+            return
+        end
+        local mph = currentSeat.AssemblyLinearVelocity.Magnitude * 0.56818181818181812
+        local elapsed = os.clock() - measure.Start
+        if mph >= 60 then
+            local tune = State.tune
+            State.measuredAcceleration = {
+                Time = elapsed,
+                Horsepower = tune and tonumber(tune.Horsepower) or 0,
+                FirstRatio = tune and tune.Ratios and tonumber(tune.Ratios[3]) or 0,
+                FinalDrive = tune and tonumber(tune.FinalDrive) or 0,
+                FDMult = tune and tonumber(tune.FDMult) or 0,
+                Weight = tune and tonumber(tune.Weight) or 0,
+            }
+            StopAccelerationMeasure()
+            setStatus(string.format(
+                "Measured 0-60: %.2f s at %.0f hp. Now Build a target.",
+                elapsed, State.measuredAcceleration.Horsepower
+            ), false)
+            Notify("success", string.format("Measured 0-60: %.2f s", elapsed))
+            return
+        end
+        if elapsed > 20 then
+            StopAccelerationMeasure()
+            setStatus("No 60 mph within 20 s. Check the car and try again.", true)
+            return
+        end
+        if os.clock() - measure.LastUpdate > 0.15 then
+            measure.LastUpdate = os.clock()
+            setStatus(string.format("Measuring: %.1f mph — drive from rest to 60.", mph), false)
+        end
+    end)
+    State.accelerationMeasure = measure
+    setStatus("Measuring: drive from rest to 60 mph.", false)
+end
+
 local function OpenMaxSpeedBuilder()
     local tune = State.tune
     if tune == nil then
@@ -4108,21 +4193,16 @@ local function OpenMaxSpeedBuilder()
     local diameter = DrivenWheelDiameter() or 2.5
     local redline = tonumber(tune.Redline) or 6000
     local finalDrive = tonumber(tune.FinalDrive) or 3.5
-    local weight = tonumber(tune.Weight) or 3000
-    local horsepower = tonumber(tune.Horsepower) or 500
-    local currentAccel = ComputeAcceleration()
-    local accelTarget = currentAccel > 0 and currentAccel or 5
-    local firstForward = type(ratios) == "table" and tonumber(ratios[3]) or 3.5
-    if firstForward == nil or firstForward <= 0 then
-        firstForward = 3.5
-    end
-    firstForward = math.max(firstForward, 4.5)
-    local efficiency = 12.5
+    local measuredAcceleration = State.measuredAcceleration
+    local accelTarget = measuredAcceleration and measuredAcceleration.Time or 5
     local gripFloor = 1.0
     local currentTop = ComputeMaxSpeed()
     local target = currentTop > 0 and currentTop or 200
 
-    local dialog = OpenBuilderDialog("MAX SPEED BUILDER", 410, 620)
+    local dialog = OpenBuilderDialog("MAX SPEED BUILDER", 410, 560)
+    pcall(function()
+        dialog.Frame.Destroying:Connect(StopAccelerationMeasure)
+    end)
     local content = dialog.Content
     local order = 0
     local function NextOrder()
@@ -4145,17 +4225,13 @@ local function OpenMaxSpeedBuilder()
         ZIndex      = 47,
     })
 
-    MonoUI.Heading(content, NextOrder(), "Acceleration (power-limited)")
+    MonoUI.Heading(content, NextOrder(), "Acceleration (measured baseline)")
     local accelTargetInput = BuilderNumberRow(content, NextOrder(), "Target 0-60 (seconds)", accelTarget, "s")
-    local weightInput = BuilderNumberRow(content, NextOrder(), "Weight (lb)", weight, "lb")
-    local horsepowerInput = BuilderNumberRow(content, NextOrder(), "Horsepower", horsepower, "hp")
-    local firstForwardInput = BuilderNumberRow(content, NextOrder(), "First forward ratio", firstForward, "ratio")
-    local efficiencyInput = BuilderNumberRow(content, NextOrder(), "Real-world efficiency (%)", efficiency, "%")
     local gripFloorInput = BuilderNumberRow(content, NextOrder(), "Grip-limited 0-60 floor (s)", gripFloor, "s")
     local generatedHorsepower = nil
 
     local status = MonoUI.Texted(content, {
-        Text        = "Enter a target, then Build.",
+        Text        = "Measure 0-60 from rest, then Build a target.",
         Size        = Theme.Type.Support,
         Tint        = "Muted",
         Bold        = false,
@@ -4256,6 +4332,16 @@ local function OpenMaxSpeedBuilder()
         end,
     }
 
+    local measureRow = MonoUI.Row(content, NextOrder(), 30)
+    MonoUI.Button {
+        Parent  = measureRow,
+        Caption = "Measure 0-60 from rest",
+        ZIndex  = 47,
+        OnClick = function()
+            StartAccelerationMeasure(SetStatus)
+        end,
+    }
+
     local accelActionRow = MonoUI.Row(content, NextOrder(), 30)
     local accelCell = MonoUI.Columns(accelActionRow, 2, 6, 30)
     MonoUI.Button {
@@ -4266,44 +4352,31 @@ local function OpenMaxSpeedBuilder()
         ZIndex  = 47,
         OnClick = function()
             local targetSeconds = tonumber(accelTargetInput.Text)
-            local weightValue = tonumber(weightInput.Text)
-            local horsepowerValue = tonumber(horsepowerInput.Text)
-            local efficiencyValue = tonumber(efficiencyInput.Text)
             local floorValue = tonumber(gripFloorInput.Text)
             if targetSeconds == nil or targetSeconds <= 0 then
                 SetStatus("Target 0-60 must be positive.", true)
-                return
-            end
-            if weightValue == nil or weightValue <= 0 then
-                SetStatus("Weight must be positive.", true)
-                return
-            end
-            if horsepowerValue == nil or horsepowerValue <= 0 then
-                SetStatus("Horsepower must be positive.", true)
-                return
-            end
-            if efficiencyValue == nil or efficiencyValue <= 0 or efficiencyValue > 100 then
-                SetStatus("Efficiency must be between 0 and 100 percent.", true)
                 return
             end
             if floorValue == nil or floorValue < 0 then
                 SetStatus("Grip floor must be zero or positive.", true)
                 return
             end
-            local mass = weightValue * 0.45359237
-            local targetSpeed = 60 * 0.44704
+            local baseline = State.measuredAcceleration
+            if baseline == nil or baseline.Time <= 0 or baseline.Horsepower <= 0 then
+                SetStatus("Measure 0-60 first: press Measure, then drive from rest to 60 mph.", true)
+                return
+            end
             local effectiveTarget = math.max(targetSeconds, floorValue)
-            local efficiencyFactor = efficiencyValue / 100
-            local ideal = 0.5 * mass * targetSpeed * targetSpeed / (horsepowerValue * 745.699872)
-            local required = 0.5 * mass * targetSpeed * targetSpeed / effectiveTarget / efficiencyFactor / 745.699872
-            generatedHorsepower = math.max(math.ceil(required), math.ceil(horsepowerValue))
+            local required = baseline.Horsepower * baseline.Time / effectiveTarget
+            generatedHorsepower = math.max(1, math.ceil(required))
             local floorNote = ""
             if targetSeconds < floorValue then
                 floorNote = string.format("\nTarget is below the grip floor; expect about %.2f s.", floorValue)
             end
             SetStatus(string.format(
-                "Ideal 0-60 at %.0f hp: %.2f s\nEffective target: %.2f s (floor %.2f s) · efficiency %.1f%%\nRequired horsepower: %.0f hp (current HP kept if higher)%s\nApply acceleration also sets first gear, AWD/TCS/ABS, track tires, friction, weight distribution and CG.",
-                horsepowerValue, ideal, effectiveTarget, floorValue, efficiencyValue, generatedHorsepower, floorNote
+                "Measured 0-60: %.2f s at %.0f hp (first %.2f)\nEffective target: %.2f s (floor %.2f s)\nRequired horsepower: %.0f hp%s\nApply changes horsepower only; measure again after changing grip or gearing.",
+                baseline.Time, baseline.Horsepower, baseline.FirstRatio or 0,
+                effectiveTarget, floorValue, generatedHorsepower, floorNote
             ), false)
         end,
     }
@@ -4318,19 +4391,124 @@ local function OpenMaxSpeedBuilder()
                 SetStatus("Press Build acceleration first.", true)
                 return
             end
-            local firstForwardValue = tonumber(firstForwardInput.Text)
-            if firstForwardValue == nil or firstForwardValue <= 0 then
-                SetStatus("First forward ratio must be positive.", true)
-                return
-            end
-            if ApplyAccelerationProfile(generatedHorsepower, firstForwardValue) ~= true then
+            if State.tune == nil then
                 SetStatus("The car has no A-Chassis tune to write to.", true)
                 return
             end
-            LogInfo(string.format("Acceleration profile: %d hp, first ratio %.3f", generatedHorsepower, firstForwardValue))
-            Notify("success", "Acceleration profile applied · exit and re-enter the vehicle")
+            State.tune.Horsepower = generatedHorsepower
+            local entry = FindEntry("Motor.Horsepower")
+            if entry ~= nil then
+                entry.value = entry.getValue()
+                if entry.widget ~= nil and entry.widget.Apply ~= nil then
+                    pcall(entry.widget.Apply, entry.value)
+                end
+            end
+            RefreshDerivedEntries()
+            State.measuredAcceleration = nil
+            SetStatus(string.format("Applied %.0f hp. Measure again for a new baseline.", generatedHorsepower), false)
+            LogInfo(string.format("Measured acceleration builder applied %d horsepower", generatedHorsepower))
+            Notify("success", "Horsepower applied · exit and re-enter the vehicle")
         end,
     }
+
+end
+
+local function FindCarClient()
+    local playerGui = Player:FindFirstChild("PlayerGui")
+    local interface = playerGui and playerGui:FindFirstChild("A-Chassis Interface")
+    local running = interface and interface:FindFirstChild("CarClient")
+    if running ~= nil then
+        return running
+    end
+    local car = State.car
+    local tune = car and car:FindFirstChild("A-Chassis Tune")
+    local carInterface = tune and tune:FindFirstChild("A-Chassis Interface")
+    return carInterface and carInterface:FindFirstChild("CarClient")
+end
+
+local function RestartChassis()
+    local car = State.car
+    local seat = car and car:FindFirstChild("DriveSeat")
+    if car == nil or seat == nil then
+        Notify("error", "Spawn a vehicle before applying live")
+        return
+    end
+    if State.chassisRestarting then
+        Notify("info", "A chassis restart is already running")
+        return
+    end
+    local client = FindCarClient()
+    if client == nil or not client:IsA("BaseScript") then
+        Notify("error", "Could not find the running A-Chassis CarClient")
+        return
+    end
+
+    local interface = client.Parent
+    local values = interface and interface:FindFirstChild("Values")
+    local gearValue = values and values:FindFirstChild("Gear")
+    local saved = {
+        velocity = seat.AssemblyLinearVelocity,
+        angular = seat.AssemblyAngularVelocity,
+        steerFloat = seat.SteerFloat,
+        steer = seat.Steer,
+        throttleFloat = seat.ThrottleFloat,
+        throttle = seat.Throttle,
+        gear = seat:GetAttribute("Gear"),
+        rpm = seat:GetAttribute("RPM"),
+        valuesGear = gearValue and gearValue.Value or nil,
+    }
+
+    State.chassisRestarting = true
+    LogInfo("Live Apply: restarting A-Chassis CarClient")
+    local disabled = pcall(function()
+        client.Disabled = true
+    end)
+    if not disabled then
+        State.chassisRestarting = false
+        Notify("error", "Could not pause CarClient")
+        return
+    end
+    task.wait(0.35)
+    local enabled = pcall(function()
+        client.Disabled = false
+    end)
+    task.wait(1.2)
+
+    local restored = false
+    if enabled and car.Parent ~= nil then
+        restored = pcall(function()
+            if saved.gear ~= nil then
+                seat:SetAttribute("Gear", saved.gear)
+            end
+            if saved.rpm ~= nil then
+                seat:SetAttribute("RPM", saved.rpm)
+            end
+            local liveValues = interface and interface:FindFirstChild("Values")
+            local liveGear = liveValues and liveValues:FindFirstChild("Gear")
+            if liveGear ~= nil and saved.valuesGear ~= nil then
+                liveGear.Value = saved.valuesGear
+            elseif gearValue ~= nil and saved.valuesGear ~= nil then
+                gearValue.Value = saved.valuesGear
+            end
+            seat.SteerFloat = saved.steerFloat
+            seat.Steer = saved.steer
+            seat.ThrottleFloat = saved.throttleFloat
+            seat.Throttle = saved.throttle
+            seat.AssemblyLinearVelocity = saved.velocity
+            seat.AssemblyAngularVelocity = saved.angular
+        end)
+    end
+
+    State.chassisRestarting = false
+    if enabled and restored and car.Parent ~= nil then
+        LogInfo("Live Apply: CarClient restarted; speed/steer restored and gear display restored")
+        Notify("success", "Chassis restarted · speed/steer restored · gear display restored")
+    elseif enabled and car.Parent ~= nil then
+        LogInfo("Live Apply: CarClient restarted, but state restore failed")
+        Notify("error", "Chassis restarted, but speed/steer could not be restored")
+    else
+        Notify("error", "Chassis restart failed; use Unload and reload or re-enter")
+    end
 end
 
 --=== high-speed downforce ==================================================
@@ -5746,6 +5924,23 @@ local function CreateInterface()
         Size2       = UDim2.new(1, 0, 0, 16),
         LayoutOrder = NextOrder(),
     })
+    MonoUI.Heading(State.content, NextOrder(), "Live Apply")
+    local liveRow = MonoUI.Row(State.content, NextOrder(), 30)
+    MonoUI.Help {
+        Parent   = liveRow,
+        Position = UDim2.fromOffset(0, 7),
+        Title    = "Live Apply",
+        Text     = FEATURE_HELP.LiveApply,
+    }
+    MonoUI.Button {
+        Parent   = liveRow,
+        Caption  = "Live Apply (Restart Chassis)",
+        Size     = UDim2.new(1, -20, 0, 30),
+        Position = UDim2.fromOffset(20, 0),
+        OnClick  = function()
+            RestartChassis()
+        end,
+    }
     MonoUI.Heading(State.content, NextOrder(), "Builders")
     local function CreateBuilderRow(caption, helpKey, onClick)
         local row = MonoUI.Row(State.content, NextOrder(), 30)
@@ -5982,6 +6177,7 @@ function Unload()
     pcall(function()
         MonoUI:CloseDialogs()
     end)
+    StopAccelerationMeasure()
     State.pollToken = State.pollToken + 1
     SetDownforce(false)
     SetWheelLock(false)
